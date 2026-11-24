@@ -61,6 +61,8 @@ Kopier `T1 revPRO.vst3` til `~/Library/Audio/Plug-Ins/VST3/` og `T1 revPRO.compo
 
 Uten Xcode (bare Command Line Tools) virker `cmake -B build -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release` også. `bygg.sh` bygger, tester, signerer (ad hoc) og installerer i ett. Den bruker en lokal JUCE-kopi i `./JUCE` hvis den finnes.
 
+`lag_dmg.sh` lager deretter `dist/T1revPRO-<versjon>-macOS.dmg` med `.pkg`-installer, pluginene for manuell installasjon (med snarveier til plugin-mappene), «Les meg.txt» og logoen som diskikon.
+
 ## Tester
 `cmake -B build -DT1REVPRO_BUILD_TESTS=ON`, deretter `T1revPROTest [mappe]`:
 - **Klang:** målt RT60 ved 1,0–10,0 s, predelay, dekorrelert stereo, at halen er stille etter riktig tid, romskifte og nivå på tidlige refleksjoner.
