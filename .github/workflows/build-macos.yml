@@ -1,0 +1,96 @@
+name: Build macOS (VST3 + AU)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write   # trengs for å lage release
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache JUCE
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: t1revpro-juce-9.0.6-${{ runner.os }}
+
+      - name: Configure
+        run: cmake -B build -G Xcode -DT1REVPRO_BUILD_TESTS=ON
+
+      - name: Build
+        run: cmake --build build --config Release --target T1revPRO_VST3 T1revPRO_AU T1revPROTest -- -quiet
+
+      - name: Test (DSP, EQ, RTA, tilstand og GUI)
+        run: ./build/T1revPROTest_artefacts/Release/T1revPROTest build
+
+      - name: Ad hoc-signering (kreves for Apple Silicon)
+        run: |
+          codesign --force --deep --sign - "build/T1revPRO_artefacts/Release/VST3/T1 revPRO.vst3"
+          codesign --force --deep --sign - "build/T1revPRO_artefacts/Release/AU/T1 revPRO.component"
+
+      - name: Valider med pluginval
+        run: |
+          curl -sSL -o pluginval.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_macOS.zip
+          unzip -q pluginval.zip
+          pluginval.app/Contents/MacOS/pluginval --strictness-level 5 --skip-gui-tests \
+            --validate "build/T1revPRO_artefacts/Release/VST3/T1 revPRO.vst3"
+
+      - name: Pakk zip
+        run: |
+          mkdir -p dist
+          cp -R "build/T1revPRO_artefacts/Release/VST3/T1 revPRO.vst3" dist/
+          cp -R "build/T1revPRO_artefacts/Release/AU/T1 revPRO.component" dist/
+          ditto -c -k --keepParent dist T1revPRO-macOS.zip
+
+      - name: Lag installasjonsfil (.pkg)
+        run: |
+          VERSION=$(sed -n 's/^project(T1revPRO VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+          ID=no.morsetlabs.t1revpro
+
+          # Én pakke per format, hver med sin installasjonsmappe
+          make_component () {   # $1 = kilde-bundle, $2 = navn, $3 = installasjonsmappe
+            mkdir -p "pkgroot/$2"
+            cp -R "$1" "pkgroot/$2/"
+            pkgbuild --analyze --root "pkgroot/$2" "$2.plist"
+            # Hindre at installeren "flytter" pluginen til en gammel kopi et annet sted
+            plutil -replace 0.BundleIsRelocatable -bool NO "$2.plist"
+            pkgbuild --root "pkgroot/$2" --component-plist "$2.plist" \
+              --identifier "$ID.$2" --version "$VERSION" --install-location "$3" "$2.pkg"
+          }
+          make_component "build/T1revPRO_artefacts/Release/VST3/T1 revPRO.vst3"     vst3 "/Library/Audio/Plug-Ins/VST3"
+          make_component "build/T1revPRO_artefacts/Release/AU/T1 revPRO.component" au   "/Library/Audio/Plug-Ins/Components"
+
+          # Samle til én installer med tittel
+          productbuild --synthesize --package vst3.pkg --package au.pkg distribution.xml
+          sed -i '' 's#<installer-gui-script minSpecVersion="[0-9]*">#&<title>T1 revPRO</title>#' distribution.xml
+          productbuild --distribution distribution.xml --package-path . "T1revPRO-$VERSION-macOS.pkg"
+          cp "T1revPRO-$VERSION-macOS.pkg" T1revPRO-macOS.pkg
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: T1revPRO-macOS
+          path: |
+            T1revPRO-macOS.zip
+            T1revPRO-macOS.pkg
+
+      # Ny release lages automatisk når versjonen i CMakeLists.txt ikke har en release fra før
+      - name: Release (ny versjon på main)
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v$(sed -n 's/^project(T1revPRO VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG finnes allerede – øk VERSION i CMakeLists.txt for en ny release."
+          else
+            gh release create "$TAG" T1revPRO-macOS.pkg T1revPRO-macOS.zip --target "$GITHUB_SHA" \
+              --title "T1 revPRO $TAG" \
+              --notes "T1 revPRO romklang fra Morset Labs. VST3 og AU for macOS (Apple Silicon + Intel). Dobbeltklikk .pkg for å installere, eller bruk zip-fila og kopier pluginene manuelt."
+          fi
