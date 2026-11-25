@@ -1,97 +1,99 @@
-<img src="assets/t1revpro-logo-256.png" width="128" alt="T1 revPRO-logo">
+<img src="assets/t1revpro-logo-256.png" width="128" alt="T1 revPRO logo">
 
 # T1 revPRO
 
-Romklang (hall) i VST3-format (og AU på Mac) med myk, tett og naturlig salkarakter, laget med tanke på fiolin og andre strykere. Klangen er en **syntetisk impulsrespons** som pluginen regner ut selv og spiller av med konvolusjon. Du får jevnheten fra en konvolusjonsklang og samtidig fri kontroll over lengde, predelay, diffusion og tidlige refleksjoner, som i en algoritmisk klang. Pluginen har **0 samples latens**. Bygget med JUCE 9.0.6.
+*English · [Norsk](README.no.md)*
 
-![Skjermbilde](screenshot.png)
+Hall reverb in VST3 format (and AU on Mac) with a soft, dense and natural hall character, designed with violin and other strings in mind. The reverb is a **synthetic impulse response** that the plugin computes itself and plays back with convolution. You get the smoothness of a convolution reverb together with free control over length, predelay, diffusion and early reflections, as in an algorithmic reverb. The plugin has **0 samples of latency**. Built with JUCE 9.0.6.
 
-![Dynamisk EQ](screenshot-dyn.png)
+![Screenshot](screenshot.png)
 
-## Slik fungerer det
+![Dynamic EQ](screenshot-dyn.png)
 
-Hver gang du endrer rom, Decay, Pre-Delay, Diffusion eller Early Ref., regner en bakgrunnstråd ut en ny stereo-impulsrespons, og konvolusjonsmotoren bytter den inn uten klikk:
+## How it works
 
-1. **Tidlige refleksjoner:** 20–26 korte, myke pulser i løpet av de første 60–100 ms, med eget mønster, panorering og tidsforskjell mellom kanalene for hvert rom.
-2. **Hale:** uavhengig støy i venstre og høyre kanal (dekorrelert stereo, korrelasjon ≈ 0), delt i fem frekvensbånd som dør ut med hver sin hastighet. Bassen henger litt lenger, og diskanten dør ut omtrent dobbelt så raskt som mellomtonen, slik den gjør i en ekte sal.
-3. **Myk innsvinging:** halen bygger seg opp over 35–60 ms i stedet for å starte brått.
-4. **Mykere mellomtone:** halen senkes mildt rundt 950 Hz (700–1200 Hz), 1,5 dB fra start og om lag 4 dB sent i halen. Mellomtonen dør dermed litt raskere ut og blir ikke hard.
-5. **Diffusion** styrer ekkotettheten, fra 150 ekko i sekundet (glissen og «kornete») til helt tett støy, og smører de tidlige refleksjonene ut.
+Whenever you change the room, Decay, Pre-Delay, Diffusion or Early Ref., a background thread computes a new stereo impulse response, and the convolution engine swaps it in without clicks:
 
-Nivået følger lengden slik det gjør i et ekte rom: lengre klang gir mer klang, mens starten av halen ligger på samme nivå. Målt i testene er RT60 innenfor ±10 % av innstilt verdi fra 1 til 10 s, også ved 44,1 kHz.
+1. **Early reflections:** 20–26 short, soft pulses during the first 60–100 ms, with their own pattern, panning and inter-channel time difference for each room.
+2. **Tail:** independent noise in the left and right channels (decorrelated stereo, correlation ≈ 0), split into five frequency bands that each decay at their own rate. The bass hangs on a little longer, and the treble decays about twice as fast as the midrange, as it does in a real hall.
+3. **Soft onset:** the tail builds up over 35–60 ms instead of starting abruptly.
+4. **Softer midrange:** the tail is gently lowered around 950 Hz (700–1200 Hz), 1.5 dB at the start and about 4 dB late in the tail. The midrange therefore decays slightly faster and does not get harsh.
+5. **Diffusion** controls echo density, from 150 echoes per second (sparse and "grainy") to fully dense noise, and smears the early reflections.
 
-## Kontroller
+The level follows the length as in a real room: a longer reverb gives more reverb, while the start of the tail stays at the same level. Measured in the tests, RT60 is within ±10 % of the set value from 1 to 10 s, also at 44.1 kHz.
 
-| Kontroll | Hva den gjør |
+## Controls
+
+| Control | What it does |
 |---|---|
-| **Concert Hall / Chamber / Warm Hall** | Romtype. Bestemmer refleksjonsmønsteret, hvor fort diskanten dør (fra 6–8 kHz) og bassen i halen. |
-| **Decay** (0,3–10,0 s, steg på 0,1 s) | Etterklangstid (RT60) i mellomtonen. Strykere: 1,8–2,6 s. 5–10 s for katedral og ambient. |
-| **Pre-Delay** (0–150 ms) | Tid før klangen starter. Mer predelay holder anslag og buestrøk tydelige. Strykere: 20–30 ms. |
-| **Diffusion** (0–100 %) | Ekkotetthet. Høy gir glatt, tett hale. Lav gir glissen hale der enkeltekko høres. Standard 80 %. |
-| **Early Ref.** (−24 til +6 dB) | Nivå på de tidlige refleksjonene. Mer gir nærhet og romfølelse, mindre gir en glattere hale. |
-| **Low Cut** (Off–500 Hz) | High-pass 12 dB/okt på klangen. Holder bassen ren. |
-| **Lo Freq / Lo Gain** | Low shelf på klangen, 50–1000 Hz, ±12 dB. |
-| **High Cut** (2 kHz–Off) | Low-pass 12 dB/okt på klangen. Lavere verdi låter mykere og lenger unna. |
-| **Hi Freq / Hi Gain** | High shelf på klangen, 1–16 kHz, ±12 dB. Litt kutt (−2 til −4 dB) temmer buestøy i halen. |
-| **Dynamic EQ: Freq / Q / Thresh / Range** (to bånd) | Peaking-filtre på klangen som bare demper når nivået i båndet går over Thresh (RMS i dBFS). Range er maks demping (0 = av). 3:1, attack 8 ms, release 150 ms. Bånd 1: 950 Hz, −3 dB. Bånd 2 er av som standard. |
-| **Mix** (0–100 %) | Tørt/vått. Opp til 50 % står det tørre signalet fullt, over det tones det ned. På en aux/send: 100 %. |
-| **Width** (0–150 %) | Stereobredde på klangen. 0 % = mono, 100 % = som rommet, 150 % = ekstra bred. |
+| **Concert Hall / Chamber / Warm Hall** | Room type. Sets the reflection pattern, how fast the treble decays (from 6–8 kHz) and the bass in the tail. |
+| **Decay** (0.3–10.0 s, 0.1 s steps) | Reverb time (RT60) in the midrange. Strings: 1.8–2.6 s. 5–10 s for cathedral and ambient. |
+| **Pre-Delay** (0–150 ms) | Time before the reverb starts. More predelay keeps attacks and bow strokes clear. Strings: 20–30 ms. |
+| **Diffusion** (0–100 %) | Echo density. High gives a smooth, dense tail. Low gives a sparse tail where individual echoes can be heard. Default 80 %. |
+| **Early Ref.** (−24 to +6 dB) | Level of the early reflections. More gives closeness and a sense of space, less gives a smoother tail. |
+| **Low Cut** (Off–500 Hz) | 12 dB/oct high-pass on the reverb. Keeps the bass clean. |
+| **Lo Freq / Lo Gain** | Low shelf on the reverb, 50–1000 Hz, ±12 dB. |
+| **High Cut** (2 kHz–Off) | 12 dB/oct low-pass on the reverb. A lower value sounds softer and further away. |
+| **Hi Freq / Hi Gain** | High shelf on the reverb, 1–16 kHz, ±12 dB. A small cut (−2 to −4 dB) tames bow noise in the tail. |
+| **Dynamic EQ: Freq / Q / Thresh / Range** (two bands) | Peaking filters on the reverb that only attenuate when the level in the band exceeds Thresh (RMS in dBFS). Range is the maximum attenuation (0 = off). 3:1, attack 8 ms, release 150 ms. Band 1: 950 Hz, −3 dB. Band 2 is off by default. |
+| **Mix** (0–100 %) | Dry/wet. Up to 50 % the dry signal stays at full level, above that it is faded down. On an aux/send: 100 %. |
+| **Width** (0–150 %) | Stereo width of the reverb. 0 % = mono, 100 % = as the room, 150 % = extra wide. |
 
-EQ-en virker bare på klangen, aldri på det tørre signalet. Dobbeltklikk på en knapp for standardverdi, og klikk på tallet for å skrive inn en verdi («3.7» og «3,7» virker begge). Vinduet kan skaleres fra 75 til 200 %.
+The EQ only affects the reverb, never the dry signal. Double-click a knob for its default value, and click the number to type a value ("3.7" and "3,7" both work). The window can be scaled from 75 to 200 %.
 
-## Visning
+## Display
 
-- **DECAY:** hvordan klangen dør ut i bass (lilla), mellomtone (blå) og diskant (stiplet sølv). Strekene er de tidlige refleksjonene, og den stiplede linjen er predelay. Ved lav diffusion vises halen som korn.
-- **EQ:** sanntids-RTA av inngangen (sølvlinje) og klangen etter EQ (blått felt), i dBFS med 3 dB/okt helning. EQ-kurven ligger oppå med punkter for Low Cut, Low Shelf, High Shelf og High Cut.
-- **DYN EQ:** klangen før (sølvlinje) og etter (blått felt) den dynamiske EQ-en, uten tilt. Den hvite kurven viser dempingen akkurat nå, og den stiplede kurven viser maks demping (Range). Den stiplede streken er terskelen, og den tykke streken er nivået i båndet. EQ-gruppen viser DYNAMIC EQ-knottene når denne fanen er åpen.
-- **Dra i bildet:** i EQ-fanen drar du LC, LS, HS og HC (frekvens, og gain for shelfene). I DYN EQ-fanen drar du sirklene (frekvens og terskel) og trekantene (Range). Musehjulet over et DYN-håndtak endrer Q, og dobbeltklikk gir standardverdi.
-- Fanen skifter automatisk når du vrir på en knapp i REVERB-, EQ- eller DYNAMIC EQ-delen.
+- **DECAY:** how the reverb decays in the bass (purple), midrange (blue) and treble (dashed silver). The vertical lines are the early reflections, and the dashed line is the predelay. At low diffusion the tail is shown as grains.
+- **EQ:** real-time RTA of the input (silver line) and the reverb after EQ (blue area), in dBFS with a 3 dB/oct tilt. The EQ curve is drawn on top with points for Low Cut, Low Shelf, High Shelf and High Cut.
+- **DYN EQ:** the reverb before (silver line) and after (blue area) the dynamic EQ, without tilt. The white curve shows the current attenuation, and the dashed curve shows the maximum attenuation (Range). The dashed line is the threshold, and the thick line is the level in the band. The EQ group shows the DYNAMIC EQ knobs while this tab is open.
+- **Drag in the display:** in the EQ tab you drag LC, LS, HS and HC (frequency, and gain for the shelves). In the DYN EQ tab you drag the circles (frequency and threshold) and the triangles (Range). The mouse wheel over a DYN handle changes Q, and double-click gives the default value.
+- The tab switches automatically when you turn a knob in the REVERB, EQ or DYNAMIC EQ section.
 
-## Begrensninger
+## Limitations
 
-- Rommene er syntetiske og ikke målt i virkelige saler. Karakteren ligner store maskinvare-haller, men pluginen bruker ingen data, presets eller navn fra kommersielle produkter.
-- Når Decay, Pre-Delay, Diffusion eller Early Ref. endres, lages en ny impulsrespons i bakgrunnen. Automasjon av disse gir derfor myke overganger, ikke sample-nøyaktige endringer. EQ, Dynamic EQ, Width og Mix virker umiddelbart.
-- Klangen er statisk. Den har ingen modulasjon («chorus» i halen) slik noen algoritmiske klanger har.
+- The rooms are synthetic and not measured in real halls. The character resembles large hardware halls, but the plugin uses no data, presets or names from commercial products.
+- When Decay, Pre-Delay, Diffusion or Early Ref. changes, a new impulse response is created in the background. Automating these therefore gives smooth transitions, not sample-accurate changes. EQ, Dynamic EQ, Width and Mix take effect immediately.
+- The reverb is static. It has no modulation ("chorus" in the tail) as some algorithmic reverbs do.
 
-## Bygging
+## Building
 
-### Via GitHub (anbefalt)
-Workflowen i `.github/workflows/build-macos.yml` bygger VST3 og AU som universal binary (Apple Silicon og Intel), kjører testene og pluginval, og lager en `.pkg`-installer. Ferdige versjoner ligger under **Releases**. En ny release lages automatisk når `VERSION` i `CMakeLists.txt` økes og pushes til `main`.
+### Via GitHub (recommended)
+The workflow in `.github/workflows/build-macos.yml` builds VST3 and AU as a universal binary (Apple Silicon and Intel), runs the tests and pluginval, and creates a `.pkg` installer. Finished versions are under **Releases**. A new release is created automatically when `VERSION` in `CMakeLists.txt` is increased and pushed to `main`.
 
-### Lokalt på Mac
+### Locally on Mac
 ```bash
 cmake -B build -G Xcode
 cmake --build build --config Release --target T1revPRO_VST3 T1revPRO_AU
 ```
-Kopier `T1 revPRO.vst3` til `~/Library/Audio/Plug-Ins/VST3/` og `T1 revPRO.component` til `~/Library/Audio/Plug-Ins/Components/`.
+Copy `T1 revPRO.vst3` to `~/Library/Audio/Plug-Ins/VST3/` and `T1 revPRO.component` to `~/Library/Audio/Plug-Ins/Components/`.
 
-Uten Xcode (bare Command Line Tools) virker `cmake -B build -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release` også. `bygg.sh` bygger, tester, signerer (ad hoc) og installerer i ett. Den bruker en lokal JUCE-kopi i `./JUCE` hvis den finnes.
+Without Xcode (Command Line Tools only), `cmake -B build -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release` also works. `bygg.sh` builds, tests, signs (ad hoc) and installs in one go. It uses a local JUCE copy in `./JUCE` if there is one.
 
-`lag_dmg.sh` lager deretter `dist/T1revPRO-<versjon>-macOS.dmg` med `.pkg`-installer, pluginene for manuell installasjon (med snarveier til plugin-mappene), «Les meg.txt» og logoen som diskikon.
+`lag_dmg.sh` then creates `dist/T1revPRO-<version>-macOS.dmg` with the `.pkg` installer, the plugins for manual installation (with shortcuts to the plug-in folders), "Les meg.txt" and the logo as the disk icon.
 
-## Tester
-`cmake -B build -DT1REVPRO_BUILD_TESTS=ON`, deretter `T1revPROTest [mappe]`:
-- **Klang:** målt RT60 ved 1,0–10,0 s, predelay, dekorrelert stereo, at halen er stille etter riktig tid, romskifte og nivå på tidlige refleksjoner.
-- **Diffusion:** glissen hale ved 0 % (høy kurtosis) og tett hale ved 100 %.
-- **EQ:** at kurven i GUI-et stemmer med lyden (shelf, low cut, high cut).
-- **Mellomtone:** at 700–1200 Hz i halen ligger 1,5–4,5 dB under naboområdene.
-- **Dynamisk EQ:** at en sterk tone i båndet dempes med Range, at svakt signal og toner utenfor båndet ikke endres, og at dempingen meldes til visningen.
-- **Dra-håndtak:** at LS, HC, terskel og Range endres riktig når håndtakene flyttes.
-- **RTA:** riktig nivå i dBFS, ingen lekkasje og full kø uten krasj.
-- **Ellers:** 44,1 og 48 kHz, mix 0 = uendret tørt signal, lagring og gjenoppretting av tilstand, og at IR-en byttes i bakgrunnen.
-- **GUI:** tegner `screenshot.png` (EQ og RTA), `screenshot-decay.png` og `screenshot-dyn.png` til mappen.
+## Tests
+`cmake -B build -DT1REVPRO_BUILD_TESTS=ON`, then `T1revPROTest [folder]`:
+- **Reverb:** measured RT60 at 1.0–10.0 s, predelay, decorrelated stereo, that the tail is silent after the right time, room switching and early reflection level.
+- **Diffusion:** sparse tail at 0 % (high kurtosis) and dense tail at 100 %.
+- **EQ:** that the curve in the GUI matches the sound (shelf, low cut, high cut).
+- **Midrange:** that 700–1200 Hz in the tail sits 1.5–4.5 dB below the neighbouring ranges.
+- **Dynamic EQ:** that a strong tone in the band is attenuated by Range, that weak signals and tones outside the band are unchanged, and that the attenuation is reported to the display.
+- **Drag handles:** that LS, HC, threshold and Range change correctly when the handles are moved.
+- **RTA:** correct level in dBFS, no leakage, and a full queue without crashing.
+- **Other:** 44.1 and 48 kHz, mix 0 = unchanged dry signal, saving and restoring state, and that the IR is swapped in the background.
+- **GUI:** draws `screenshot.png` (EQ and RTA), `screenshot-decay.png` and `screenshot-dyn.png` to the folder.
 
-## Kodestruktur
-| Fil | Innhold |
+## Code structure
+| File | Contents |
 |---|---|
-| `Source/RomSyntese.*` | Lager impulsresponsen: rommene, tidlige refleksjoner, frekvensavhengig hale og diffusion. |
-| `Source/Analysator.*` | RTA: låsefri kø fra lydtråden og FFT med glatting for visningen. |
-| `Source/PluginProcessor.*` | Parametere, bakgrunnstråd for nye impulsresponser, konvolusjon, EQ, dynamisk EQ, bredde og mix. |
-| `Source/PluginEditor.*` | GUI: DECAY-, EQ- og DYN EQ-visning med dra-håndtak og RTA, knotter, romvalg og skalerbart vindu. |
-| `Tests/T1revPROTest.cpp` | Testene og skjermbildene over. |
-| `assets/` | Logo (SVG og PNG) og `lag_png.py`, som lager PNG-ene fra SVG-en. |
+| `Source/RomSyntese.*` | Creates the impulse response: the rooms, early reflections, frequency-dependent tail and diffusion. |
+| `Source/Analysator.*` | RTA: lock-free queue from the audio thread and FFT with smoothing for the display. |
+| `Source/PluginProcessor.*` | Parameters, background thread for new impulse responses, convolution, EQ, dynamic EQ, width and mix. |
+| `Source/PluginEditor.*` | GUI: DECAY, EQ and DYN EQ displays with drag handles and RTA, knobs, room selection and a scalable window. |
+| `Tests/T1revPROTest.cpp` | The tests and screenshots above. |
+| `assets/` | Logo (SVG and PNG) and `lag_png.py`, which creates the PNGs from the SVG. |
 
-Koden følger vanlig praksis for VST3/JUCE: lydtråden allokerer ikke, låser ikke og gjør ingen fil-I/O. Nye impulsresponser lages i en egen tråd og byttes inn uten låser.
+The code follows common VST3/JUCE practice: the audio thread does not allocate, lock or do file I/O. New impulse responses are created on a separate thread and swapped in without locks.
 
-## Lisens
-JUCE er lisensiert under AGPLv3 eller kommersiell lisens. For privat bruk er det uproblematisk. Skal pluginen deles eller selges som lukket kode, kan det kreves en kommersiell JUCE-lisens.
+## License
+JUCE is licensed under AGPLv3 or a commercial license. For private use this is not a problem. If the plugin is shared or sold as closed source, a commercial JUCE license may be required.
