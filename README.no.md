@@ -31,15 +31,15 @@ Nivået følger lengden slik det gjør i et ekte rom: lengre klang gir mer klang
 | **Decay** (0,3–10,0 s, steg på 0,1 s) | Etterklangstid (RT60) i mellomtonen. Strykere: 1,8–2,6 s. 5–10 s for katedral og ambient. |
 | **Pre-Delay** (0–150 ms) | Tid før klangen starter. Mer predelay holder anslag og buestrøk tydelige. Strykere: 20–30 ms. |
 | **Diffusion** (0–100 %) | Ekkotetthet. Høy gir glatt, tett hale. Lav gir glissen hale der enkeltekko høres. Standard 80 %. |
-| **Mod Depth** (0–100 %) | Hvor mye halen moduleres (opptil ±1,5 ms). Gjør halen mer levende, bredere og mindre statisk. Standard 35 %. Strykere: 25–45 %. |
-| **Mod Rate** (0,10–3,00 Hz) | Hastigheten på modulasjonen. 0,4–0,8 Hz låter naturlig, og raskere gir mer chorus. Standard 0,60 Hz. |
+| **Mod Depth** (0–100 %) | Hvor mye halen moduleres (opptil ±1 ms). Gjør halen mer levende, bredere og mindre statisk. Standard 25 %. Strykere: 15–35 %. |
+| **Mod Rate** (0,05–2,00 Hz) | Hastigheten på modulasjonen. 0,2–0,5 Hz låter naturlig, og raskere gir mer chorus. Standard 0,30 Hz. |
 | **Early Ref.** (−24 til +6 dB) | Nivå på de tidlige refleksjonene. Mer gir nærhet og romfølelse, mindre gir en glattere hale. |
 | **Low Cut** (Off–500 Hz) | High-pass 12 dB/okt på klangen. Holder bassen ren. |
 | **Lo Freq / Lo Gain** | Low shelf på klangen, 50–1000 Hz, ±12 dB. |
 | **High Cut** (2 kHz–Off) | Low-pass 12 dB/okt på klangen. Lavere verdi låter mykere og lenger unna. |
 | **Hi Freq / Hi Gain** | High shelf på klangen, 1–16 kHz, ±12 dB. Litt kutt (−2 til −4 dB) temmer buestøy i halen. |
 | **Dynamic EQ: Freq / Q / Thresh / Range** (to bånd) | Peaking-filtre på klangen som bare demper når nivået i båndet går over Thresh (RMS i dBFS). Range er maks demping (0 = av). 3:1, attack 8 ms, release 150 ms. Bånd 1: 950 Hz, −3 dB. Bånd 2 er av som standard. |
-| **Mix** (0–100 %) | Tørt/vått. Opp til 50 % står det tørre signalet fullt, over det tones det ned. På en aux/send: 100 %. |
+| **Mix** (0–100 %) | Tørt/vått. Opp til 50 % står det tørre signalet fullt, over det tones det ned. Klangen stiger etter en kurve, så lave innstillinger blir tørre: 25 % = −10 dB, 50 % = full klang. På en aux/send: 100 %. |
 | **Width** (0–150 %) | Stereobredde på klangen. 0 % = mono, 100 % = som rommet, 150 % = ekstra bred. |
 
 EQ-en virker bare på klangen, aldri på det tørre signalet. Dobbeltklikk på en knapp for standardverdi, og klikk på tallet for å skrive inn en verdi («3.7» og «3,7» virker begge). Vinduet kan skaleres fra 75 til 200 %.

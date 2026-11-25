@@ -87,8 +87,8 @@ AudioProcessorValueTreeState::ParameterLayout FiolinProcessor::lagParametre()
         std::make_unique<P> (ParameterID { "predelay_ms", 2 }, "Pre-Delay", preRange, 25.0f, ms),
         std::make_unique<P> (ParameterID { "tidlige", 2 }, "Early Reflections", NormalisableRange<float> (-24.0f, 6.0f, 0.5f), 0.0f, db),
         std::make_unique<P> (ParameterID { "diffusion", 3 }, "Diffusion", NormalisableRange<float> (0.0f, 100.0f, 1.0f), 80.0f, prosent),
-        std::make_unique<P> (ParameterID { "mod_depth", 5 }, "Mod Depth", NormalisableRange<float> (0.0f, 100.0f, 1.0f), 35.0f, prosent),
-        std::make_unique<P> (ParameterID { "mod_rate", 5 }, "Mod Rate", logRange (0.1f, 3.0f, 0.01f), 0.6f, hzLfo),
+        std::make_unique<P> (ParameterID { "mod_depth", 5 }, "Mod Depth", NormalisableRange<float> (0.0f, 100.0f, 1.0f), 25.0f, prosent),
+        std::make_unique<P> (ParameterID { "mod_rate", 5 }, "Mod Rate", logRange (0.05f, 2.0f, 0.01f), 0.3f, hzLfo),
         std::make_unique<P> (ParameterID { "lavkutt", 1 }, "Low Cut", lavRange, 20.0f, hzLav),
         std::make_unique<P> (ParameterID { "loshelf_freq", 3 }, "Low Shelf Freq", logRange (50.0f, 1000.0f, 1.0f), 250.0f, hz),
         std::make_unique<P> (ParameterID { "loshelf_gain", 3 }, "Low Shelf Gain", NormalisableRange<float> (-12.0f, 12.0f, 0.1f), 0.0f, db),
@@ -178,7 +178,6 @@ FiolinProcessor::FiolinProcessor()
         dynNivaa[(size_t) b] = -120.0f;
     }
 
-    mikser.setMixingRule (dsp::DryWetMixingRule::balanced);
     lavkutt.setType (dsp::StateVariableTPTFilterType::highpass);
     hoykutt.setType (dsp::StateVariableTPTFilterType::lowpass);
 
@@ -269,8 +268,11 @@ void FiolinProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     byggIR (true);
     bedt = lastet;
 
-    mikser.prepare (spec);
-    mikser.setWetLatency ((float) konvTidlig.getLatency());
+    {
+        const auto [t, v] = mixGain (pMix->load());
+        torrGain.reset (sampleRate, 0.03); torrGain.setCurrentAndTargetValue (t);
+        vaatGain.reset (sampleRate, 0.03); vaatGain.setCurrentAndTargetValue (v);
+    }
     modulasjon.prepare (sampleRate);
     haleBuf.setSize (2, samplesPerBlock);
     setLatencySamples (0);
@@ -342,9 +344,6 @@ void FiolinProcessor::processBlock (AudioBuffer<float>& buffer, MidiBuffer&)
     if (vaat.getNumSamples() < n)
         vaat.setSize (2, n, false, false, true);
 
-    auto blokk = dsp::AudioBlock<float> (buffer).getSubsetChannelBlock (0, 2);
-    mikser.setWetMixProportion (pMix->load() / 100.0f);
-    mikser.pushDrySamples (blokk);
 
     // Våt gren: konvolusjon (predelay ligger i IR-en) -> low/high cut -> bredde.
     vaat.copyFrom (0, 0, buffer, 0, 0, n);
@@ -399,9 +398,29 @@ void FiolinProcessor::processBlock (AudioBuffer<float>& buffer, MidiBuffer&)
     rtaInn.push (buffer.getReadPointer (0), buffer.getReadPointer (1), n);
     rtaVaat.push (vaat.getReadPointer (0), vaat.getReadPointer (1), n);
 
-    buffer.copyFrom (0, 0, vaat, 0, 0, n);
-    buffer.copyFrom (1, 0, vaat, 1, 0, n);
-    mikser.mixWetSamples (blokk);
+    // Mix: tørt og vått med glattede gains (latens 0, så ingen kompensasjon).
+    const auto [tMaal, vMaal] = mixGain (pMix->load());
+    torrGain.setTargetValue (tMaal);
+    vaatGain.setTargetValue (vMaal);
+    float* ul = buffer.getWritePointer (0);
+    float* ur = buffer.getWritePointer (1);
+    for (int i = 0; i < n; ++i)
+    {
+        const float gt = torrGain.getNextValue(), gv = vaatGain.getNextValue();
+        ul[i] = gt * ul[i] + gv * l[i];
+        ur[i] = gt * ur[i] + gv * r[i];
+    }
+}
+
+std::pair<float, float> FiolinProcessor::mixGain (float mixProsent)
+{
+    // Tørt står fullt opp til 50 % og tones så ned til 0 ved 100 %.
+    // Vått stiger med en kurve (eksponent 1,7), så lave innstillinger er
+    // tørrere enn lineært: 25 % = -10 dB, 50 % = 0 dB i forhold til 100 %.
+    const float p = jlimit (0.0f, 1.0f, mixProsent / 100.0f);
+    const float torr = jmin (1.0f, 2.0f * (1.0f - p));
+    const float vaatGain = std::pow (jmin (1.0f, 2.0f * p), 1.7f);
+    return { torr, vaatGain };
 }
 
 void FiolinProcessor::prosesserDyn (float* l, float* r, int n)

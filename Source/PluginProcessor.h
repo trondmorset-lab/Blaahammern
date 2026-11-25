@@ -54,6 +54,9 @@ public:
     // frekvens f, for EQ-visningen.
     static float eqRespons (const juce::AudioProcessorValueTreeState&, double f, double fs = 48000.0);
 
+    // Mix-kurven: {tørr gain, våt gain} for Mix i prosent.
+    static std::pair<float, float> mixGain (float mixProsent);
+
     // Dynamisk EQ: to båndfiltre på klangen som demper bare når nivået i
     // båndet går over terskelen (Thresh), med maks demping Range.
     static constexpr int antallDyn = 2;
@@ -117,7 +120,7 @@ private:
     juce::AudioBuffer<float> haleBuf;
     std::atomic<float>* pModDybde = nullptr;
     std::atomic<float>* pModRate = nullptr;
-    juce::dsp::DryWetMixer<float> mikser { 8192 };
+    juce::SmoothedValue<float> torrGain, vaatGain;
     juce::dsp::StateVariableTPTFilter<float> lavkutt, hoykutt;
     juce::SmoothedValue<float> breddeSmooth;
     void oppdaterShelf();

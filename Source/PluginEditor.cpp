@@ -821,9 +821,9 @@ FiolinEditor::FiolinEditor (FiolinProcessor& p)
               "More gives presence and a sense of space, less gives a smoother tail.", M::decay);
     lagKnott (modDybde, "mod_depth", "Mod Depth",
               "How much the reverb tail is modulated (slow, subtle pitch movement like in algorithmic halls). "
-              "Makes the tail livelier, wider and less static. 0 % = static. Strings: 25-45 %.", M::decay);
+              "Makes the tail livelier, wider and less static. 0 % = static. Strings: 15-35 %.", M::decay);
     lagKnott (modRate, "mod_rate", "Mod Rate",
-              "Speed of the modulation (each voice moves at its own, uneven rate). 0.4-0.8 Hz sounds natural; "
+              "Speed of the modulation (each voice moves at its own, uneven rate). 0.2-0.5 Hz sounds natural; "
               "faster gives more chorus.", M::decay);
     lagKnott (lavkutt, "lavkutt", "Low Cut",
               "High-pass filter on the reverb (12 dB/oct). Keeps the low end clean. Off = 20 Hz.", M::eq);
@@ -837,7 +837,8 @@ FiolinEditor::FiolinEditor (FiolinProcessor& p)
     lagKnott (bredde, "bredde", "Width",
               "Stereo width of the reverb. 0 % = mono, 100 % = as designed, 150 % = extra wide.", M::decay);
     lagKnott (mix, "mix", "Mix",
-              "Dry/wet balance. Up to 50 % the dry signal stays at full level. On an aux/send: set to 100 %.", M::decay);
+              "Dry/wet balance. Up to 50 % the dry signal stays at full level, and the reverb rises gently "
+              "(25 % = -10 dB, 50 % = full reverb). On an aux/send: set to 100 %.", M::decay);
 
     for (int b = 0; b < FiolinProcessor::antallDyn; ++b)
     {

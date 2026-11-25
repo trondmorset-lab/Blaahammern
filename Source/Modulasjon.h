@@ -17,7 +17,7 @@ class Modulasjon
 {
 public:
     static constexpr double basis = 0.005;     // s
-    static constexpr double maksDybde = 0.0015; // s ved 100 %
+    static constexpr double maksDybde = 0.0010; // s ved 100 %
 
     void prepare (double sampleRate)
     {
@@ -65,7 +65,7 @@ public:
                 for (int t = 0; t < 2; ++t)
                 {
                     double& f = fase[(size_t) ch][(size_t) t];
-                    const double lfo = (std::sin (f) + 0.4 * std::sin (2.71 * f + 1.3 * (ch + 2 * t))) / 1.4;
+                    const double lfo = (std::sin (f) + 0.3 * std::sin (1.93 * f + 1.3 * (ch + 2 * t))) / 1.3;
                     f += steg[(size_t) (ch * 2 + t)];
                     if (f > tau * 100.0) f -= tau * 100.0;
                     sum += les (b, (double) skriv - (basisS + d * lfo));

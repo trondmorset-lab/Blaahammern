@@ -31,15 +31,15 @@ The level follows the length as in a real room: a longer reverb gives more rever
 | **Decay** (0.3–10.0 s, 0.1 s steps) | Reverb time (RT60) in the midrange. Strings: 1.8–2.6 s. 5–10 s for cathedral and ambient. |
 | **Pre-Delay** (0–150 ms) | Time before the reverb starts. More predelay keeps attacks and bow strokes clear. Strings: 20–30 ms. |
 | **Diffusion** (0–100 %) | Echo density. High gives a smooth, dense tail. Low gives a sparse tail where individual echoes can be heard. Default 80 %. |
-| **Mod Depth** (0–100 %) | How much the tail is modulated (up to ±1.5 ms). Makes the tail livelier, wider and less static. Default 35 %. Strings: 25–45 %. |
-| **Mod Rate** (0.10–3.00 Hz) | Speed of the modulation. 0.4–0.8 Hz sounds natural, and faster gives more chorus. Default 0.60 Hz. |
+| **Mod Depth** (0–100 %) | How much the tail is modulated (up to ±1 ms). Makes the tail livelier, wider and less static. Default 25 %. Strings: 15–35 %. |
+| **Mod Rate** (0.05–2.00 Hz) | Speed of the modulation. 0.2–0.5 Hz sounds natural, and faster gives more chorus. Default 0.30 Hz. |
 | **Early Ref.** (−24 to +6 dB) | Level of the early reflections. More gives closeness and a sense of space, less gives a smoother tail. |
 | **Low Cut** (Off–500 Hz) | 12 dB/oct high-pass on the reverb. Keeps the bass clean. |
 | **Lo Freq / Lo Gain** | Low shelf on the reverb, 50–1000 Hz, ±12 dB. |
 | **High Cut** (2 kHz–Off) | 12 dB/oct low-pass on the reverb. A lower value sounds softer and further away. |
 | **Hi Freq / Hi Gain** | High shelf on the reverb, 1–16 kHz, ±12 dB. A small cut (−2 to −4 dB) tames bow noise in the tail. |
 | **Dynamic EQ: Freq / Q / Thresh / Range** (two bands) | Peaking filters on the reverb that only attenuate when the level in the band exceeds Thresh (RMS in dBFS). Range is the maximum attenuation (0 = off). 3:1, attack 8 ms, release 150 ms. Band 1: 950 Hz, −3 dB. Band 2 is off by default. |
-| **Mix** (0–100 %) | Dry/wet. Up to 50 % the dry signal stays at full level, above that it is faded down. On an aux/send: 100 %. |
+| **Mix** (0–100 %) | Dry/wet. Up to 50 % the dry signal stays at full level, above that it is faded down. The reverb rises along a curve, so low settings stay dry: 25 % = −10 dB, 50 % = full reverb. On an aux/send: 100 %. |
 | **Width** (0–150 %) | Stereo width of the reverb. 0 % = mono, 100 % = as the room, 150 % = extra wide. |
 
 The EQ only affects the reverb, never the dry signal. Double-click a knob for its default value, and click the number to type a value ("3.7" and "3,7" both work). The window can be scaled from 75 to 200 %.

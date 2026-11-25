@@ -388,7 +388,15 @@ int main (int argc, char** argv)
             for (int ch = 0; ch < 2; ++ch) mod2.copyFrom (ch, pos, bb, ch, 0, len);
         }
         sjekk (korr (mod1, mod2, 48000, 96000) < 0.95, "modulasjon: halen er tidsvarierende", korr (mod1, mod2, 48000, 96000));
-        sjekk (pm.parametre.getParameter ("mod_rate")->getCurrentValueAsText() == "0.60 Hz", "mod rate vises som «0.60 Hz»");
+        sjekk (pm.parametre.getParameter ("mod_rate")->getCurrentValueAsText() == "0.30 Hz", "mod rate vises som «0.30 Hz»");
+        // Mix-kurven
+        auto [t25, v25] = FiolinProcessor::mixGain (25.0f);
+        auto [t50, v50] = FiolinProcessor::mixGain (50.0f);
+        auto [t100, v100] = FiolinProcessor::mixGain (100.0f);
+        sjekk (t25 == 1.0f && t50 == 1.0f && t100 == 0.0f && v50 == 1.0f && v100 == 1.0f, "mix: tørt fullt til 50 %, vått fullt fra 50 %");
+        const float db25 = Decibels::gainToDecibels (v25);
+        sjekk (db25 < -9.0f && db25 > -11.5f, "mix 25 %: klang ca. -10 dB", db25);
+        sjekk (FiolinProcessor::mixGain (0.0f).second == 0.0f, "mix 0 %: ingen klang");
     }
 
     // 7. Lagring/gjenoppretting av tilstand.
