@@ -483,7 +483,8 @@ void KlangVisning::tegnDecay (Graphics& g, Rectangle<float> plott)
     g.setColour (farge::tekst);
     g.setFont (FontOptions (13.0f, Font::bold));
     g.drawText ("RT60 " + tall (rt, 1) + " s" + prikk + "Pre-delay "
-                    + String (roundToInt (pre * 1000.0)) + " ms" + prikk + "Diffusion " + String (roundToInt (diff * 100)) + " %",
+                    + String (roundToInt (pre * 1000.0)) + " ms" + prikk + "Diffusion " + String (roundToInt (diff * 100)) + " %"
+                    + prikk + "Mod " + String (roundToInt (p.getRawParameterValue ("mod_depth")->load())) + " %",
                 topp, Justification::centredLeft);
 
     g.setFont (FontOptions (11.0f));
@@ -818,6 +819,12 @@ FiolinEditor::FiolinEditor (FiolinProcessor& p)
     lagKnott (tidlige, "tidlige", "Early Ref.",
               "Level of the early reflections, the first echoes from walls and ceiling. "
               "More gives presence and a sense of space, less gives a smoother tail.", M::decay);
+    lagKnott (modDybde, "mod_depth", "Mod Depth",
+              "How much the reverb tail is modulated (slow, subtle pitch movement like in algorithmic halls). "
+              "Makes the tail livelier, wider and less static. 0 % = static. Strings: 25-45 %.", M::decay);
+    lagKnott (modRate, "mod_rate", "Mod Rate",
+              "Speed of the modulation (each voice moves at its own, uneven rate). 0.4-0.8 Hz sounds natural; "
+              "faster gives more chorus.", M::decay);
     lagKnott (lavkutt, "lavkutt", "Low Cut",
               "High-pass filter on the reverb (12 dB/oct). Keeps the low end clean. Off = 20 Hz.", M::eq);
     lagKnott (loFreq, "loshelf_freq", "Lo Freq", "Corner frequency of the low shelf.", M::eq);
@@ -989,6 +996,7 @@ void FiolinEditor::Innhold::paint (Graphics& g)
     g.setColour (farge::linje.withAlpha (0.6f));
     const int midtY = gruppeY + 26 + (getHeight() - gruppeY - 18 - 26) / 2;
     g.drawHorizontalLine (midtY, (float) grupper[1].x + 14, (float) (grupper[1].x + grupper[1].b - 14));
+    g.drawHorizontalLine (midtY, (float) grupper[0].x + 6 + 124 + 8, (float) (grupper[0].x + grupper[0].b - 14));
 }
 
 void FiolinEditor::Innhold::resized()
@@ -1009,8 +1017,15 @@ void FiolinEditor::Innhold::resized()
     // REVERB: Decay stor, så tre små
     auto rv = Rectangle<int> (grupper[0].x + 6, y, grupper[0].b - 12, h);
     e.plasser (e.decay, rv.removeFromLeft (124), 110);
-    for (auto* k : { &e.predelay, &e.diffusion, &e.tidlige })
-        e.plasser (*k, rv.removeFromLeft (rv.getWidth() / ((k == &e.predelay) ? 3 : (k == &e.diffusion ? 2 : 1))), 70);
+    // to rader: Pre-Delay / Diffusion / Early Ref. og Mod Depth / Mod Rate
+    auto rvRad1 = rv.removeFromTop (rv.getHeight() / 2);
+    const int kb3 = rvRad1.getWidth() / 3;
+    e.plasser (e.predelay,  rvRad1.removeFromLeft (kb3), 54);
+    e.plasser (e.diffusion, rvRad1.removeFromLeft (kb3), 54);
+    e.plasser (e.tidlige,   rvRad1, 54);
+    auto rvRad2 = rv.withSizeKeepingCentre (kb3 * 2, rv.getHeight());
+    e.plasser (e.modDybde, rvRad2.removeFromLeft (kb3), 54);
+    e.plasser (e.modRate,  rvRad2, 54);
 
     // EQ: to rader (lav / høy), kolonner CUT / FREQ / GAIN
     auto eq = Rectangle<int> (grupper[1].x + 6, y, grupper[1].b - 12, h);

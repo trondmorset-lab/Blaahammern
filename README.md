@@ -18,7 +18,8 @@ Whenever you change the room, Decay, Pre-Delay, Diffusion or Early Ref., a backg
 2. **Tail:** independent noise in the left and right channels (decorrelated stereo, correlation ≈ 0), split into five frequency bands that each decay at their own rate. The bass hangs on a little longer, and the treble decays about twice as fast as the midrange, as it does in a real hall.
 3. **Soft onset:** the tail builds up over 35–60 ms instead of starting abruptly.
 4. **Softer midrange:** the tail is gently lowered around 950 Hz (700–1200 Hz), 1.5 dB at the start and about 4 dB late in the tail. The midrange therefore decays slightly faster and does not get harsh.
-5. **Diffusion** controls echo density, from 150 echoes per second (sparse and "grainy") to fully dense noise, and smears the early reflections.
+5. **Modulation:** the IR is split in two. The first 35 ms after the predelay (the early reflections) play unmodulated. The tail goes through two subtly modulated delays per channel, each with its own uneven LFO and different in the left and right channels. This gives the same lively, wide tail as in algorithmic halls instead of a static impulse response. At 0 % the sound is exactly the synthetic IR.
+6. **Diffusion** controls echo density, from 150 echoes per second (sparse and "grainy") to fully dense noise, and smears the early reflections.
 
 The level follows the length as in a real room: a longer reverb gives more reverb, while the start of the tail stays at the same level. Measured in the tests, RT60 is within ±10 % of the set value from 1 to 10 s, also at 44.1 kHz.
 
@@ -30,6 +31,8 @@ The level follows the length as in a real room: a longer reverb gives more rever
 | **Decay** (0.3–10.0 s, 0.1 s steps) | Reverb time (RT60) in the midrange. Strings: 1.8–2.6 s. 5–10 s for cathedral and ambient. |
 | **Pre-Delay** (0–150 ms) | Time before the reverb starts. More predelay keeps attacks and bow strokes clear. Strings: 20–30 ms. |
 | **Diffusion** (0–100 %) | Echo density. High gives a smooth, dense tail. Low gives a sparse tail where individual echoes can be heard. Default 80 %. |
+| **Mod Depth** (0–100 %) | How much the tail is modulated (up to ±1.5 ms). Makes the tail livelier, wider and less static. Default 35 %. Strings: 25–45 %. |
+| **Mod Rate** (0.10–3.00 Hz) | Speed of the modulation. 0.4–0.8 Hz sounds natural, and faster gives more chorus. Default 0.60 Hz. |
 | **Early Ref.** (−24 to +6 dB) | Level of the early reflections. More gives closeness and a sense of space, less gives a smoother tail. |
 | **Low Cut** (Off–500 Hz) | 12 dB/oct high-pass on the reverb. Keeps the bass clean. |
 | **Lo Freq / Lo Gain** | Low shelf on the reverb, 50–1000 Hz, ±12 dB. |
@@ -52,8 +55,8 @@ The EQ only affects the reverb, never the dry signal. Double-click a knob for it
 ## Limitations
 
 - The rooms are synthetic and not measured in real halls. The character resembles large hardware halls, but the plugin uses no data, presets or names from commercial products.
-- When Decay, Pre-Delay, Diffusion or Early Ref. changes, a new impulse response is created in the background. Automating these therefore gives smooth transitions, not sample-accurate changes. EQ, Dynamic EQ, Width and Mix take effect immediately.
-- The reverb is static. It has no modulation ("chorus" in the tail) as some algorithmic reverbs do.
+- When Decay, Pre-Delay, Diffusion or Early Ref. changes, a new impulse response is created in the background. Automating these therefore gives smooth transitions, not sample-accurate changes. EQ, Dynamic EQ, Mod, Width and Mix take effect immediately.
+- The modulation is applied to the tail after the convolution, not inside a feedback network as in an algorithmic reverb. At high depth and rate it can therefore sound like chorus.
 
 ## Building
 
@@ -76,6 +79,7 @@ Without Xcode (Command Line Tools only), `cmake -B build -G "Unix Makefiles" -DC
 - **Reverb:** measured RT60 at 1.0–10.0 s, predelay, decorrelated stereo, that the tail is silent after the right time, room switching and early reflection level.
 - **Diffusion:** sparse tail at 0 % (high kurtosis) and dense tail at 100 %.
 - **EQ:** that the curve in the GUI matches the sound (shelf, low cut, high cut).
+- **Modulation:** that 0 % gives exactly the synthetic IR, and that 100 % makes the tail change over time without changing the early reflections, level or RT.
 - **Midrange:** that 700–1200 Hz in the tail sits 1.5–4.5 dB below the neighbouring ranges.
 - **Dynamic EQ:** that a strong tone in the band is attenuated by Range, that weak signals and tones outside the band are unchanged, and that the attenuation is reported to the display.
 - **Drag handles:** that LS, HC, threshold and Range change correctly when the handles are moved.
@@ -87,8 +91,9 @@ Without Xcode (Command Line Tools only), `cmake -B build -G "Unix Makefiles" -DC
 | File | Contents |
 |---|---|
 | `Source/RomSyntese.*` | Creates the impulse response: the rooms, early reflections, frequency-dependent tail and diffusion. |
+| `Source/Modulasjon.h` | Modulated delays for the tail (Hermite interpolation). |
 | `Source/Analysator.*` | RTA: lock-free queue from the audio thread and FFT with smoothing for the display. |
-| `Source/PluginProcessor.*` | Parameters, background thread for new impulse responses, convolution, EQ, dynamic EQ, width and mix. |
+| `Source/PluginProcessor.*` | Parameters, background thread for new impulse responses, convolution, tail modulation, EQ, dynamic EQ, width and mix. |
 | `Source/PluginEditor.*` | GUI: DECAY, EQ and DYN EQ displays with drag handles and RTA, knobs, room selection and a scalable window. |
 | `Tests/T1revPROTest.cpp` | The tests and screenshots above. |
 | `assets/` | Logo (SVG and PNG) and `lag_png.py`, which creates the PNGs from the SVG. |

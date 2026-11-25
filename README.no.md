@@ -18,7 +18,8 @@ Hver gang du endrer rom, Decay, Pre-Delay, Diffusion eller Early Ref., regner en
 2. **Hale:** uavhengig støy i venstre og høyre kanal (dekorrelert stereo, korrelasjon ≈ 0), delt i fem frekvensbånd som dør ut med hver sin hastighet. Bassen henger litt lenger, og diskanten dør ut omtrent dobbelt så raskt som mellomtonen, slik den gjør i en ekte sal.
 3. **Myk innsvinging:** halen bygger seg opp over 35–60 ms i stedet for å starte brått.
 4. **Mykere mellomtone:** halen senkes mildt rundt 950 Hz (700–1200 Hz), 1,5 dB fra start og om lag 4 dB sent i halen. Mellomtonen dør dermed litt raskere ut og blir ikke hard.
-5. **Diffusion** styrer ekkotettheten, fra 150 ekko i sekundet (glissen og «kornete») til helt tett støy, og smører de tidlige refleksjonene ut.
+5. **Modulasjon:** IR-en deles i to. De første 35 ms etter predelay (de tidlige refleksjonene) spilles umodulert. Halen går gjennom to svakt modulerte forsinkelser per kanal, med egne og ujevne LFO-er og ulike i venstre og høyre kanal. Det gir samme levende og brede hale som i algoritmiske haller, i stedet for en statisk impulsrespons. Ved 0 % er lyden nøyaktig den syntetiske IR-en.
+6. **Diffusion** styrer ekkotettheten, fra 150 ekko i sekundet (glissen og «kornete») til helt tett støy, og smører de tidlige refleksjonene ut.
 
 Nivået følger lengden slik det gjør i et ekte rom: lengre klang gir mer klang, mens starten av halen ligger på samme nivå. Målt i testene er RT60 innenfor ±10 % av innstilt verdi fra 1 til 10 s, også ved 44,1 kHz.
 
@@ -30,6 +31,8 @@ Nivået følger lengden slik det gjør i et ekte rom: lengre klang gir mer klang
 | **Decay** (0,3–10,0 s, steg på 0,1 s) | Etterklangstid (RT60) i mellomtonen. Strykere: 1,8–2,6 s. 5–10 s for katedral og ambient. |
 | **Pre-Delay** (0–150 ms) | Tid før klangen starter. Mer predelay holder anslag og buestrøk tydelige. Strykere: 20–30 ms. |
 | **Diffusion** (0–100 %) | Ekkotetthet. Høy gir glatt, tett hale. Lav gir glissen hale der enkeltekko høres. Standard 80 %. |
+| **Mod Depth** (0–100 %) | Hvor mye halen moduleres (opptil ±1,5 ms). Gjør halen mer levende, bredere og mindre statisk. Standard 35 %. Strykere: 25–45 %. |
+| **Mod Rate** (0,10–3,00 Hz) | Hastigheten på modulasjonen. 0,4–0,8 Hz låter naturlig, og raskere gir mer chorus. Standard 0,60 Hz. |
 | **Early Ref.** (−24 til +6 dB) | Nivå på de tidlige refleksjonene. Mer gir nærhet og romfølelse, mindre gir en glattere hale. |
 | **Low Cut** (Off–500 Hz) | High-pass 12 dB/okt på klangen. Holder bassen ren. |
 | **Lo Freq / Lo Gain** | Low shelf på klangen, 50–1000 Hz, ±12 dB. |
@@ -52,8 +55,8 @@ EQ-en virker bare på klangen, aldri på det tørre signalet. Dobbeltklikk på e
 ## Begrensninger
 
 - Rommene er syntetiske og ikke målt i virkelige saler. Karakteren ligner store maskinvare-haller, men pluginen bruker ingen data, presets eller navn fra kommersielle produkter.
-- Når Decay, Pre-Delay, Diffusion eller Early Ref. endres, lages en ny impulsrespons i bakgrunnen. Automasjon av disse gir derfor myke overganger, ikke sample-nøyaktige endringer. EQ, Dynamic EQ, Width og Mix virker umiddelbart.
-- Klangen er statisk. Den har ingen modulasjon («chorus» i halen) slik noen algoritmiske klanger har.
+- Når Decay, Pre-Delay, Diffusion eller Early Ref. endres, lages en ny impulsrespons i bakgrunnen. Automasjon av disse gir derfor myke overganger, ikke sample-nøyaktige endringer. EQ, Dynamic EQ, Mod, Width og Mix virker umiddelbart.
+- Modulasjonen virker på halen etter konvolusjonen, ikke inne i et tilbakekoblingsnett slik i en algoritmisk klang. Ved høy dybde og rate kan den derfor høres som chorus.
 
 ## Bygging
 
@@ -76,6 +79,7 @@ Uten Xcode (bare Command Line Tools) virker `cmake -B build -G "Unix Makefiles" 
 - **Klang:** målt RT60 ved 1,0–10,0 s, predelay, dekorrelert stereo, at halen er stille etter riktig tid, romskifte og nivå på tidlige refleksjoner.
 - **Diffusion:** glissen hale ved 0 % (høy kurtosis) og tett hale ved 100 %.
 - **EQ:** at kurven i GUI-et stemmer med lyden (shelf, low cut, high cut).
+- **Modulasjon:** at 0 % gir nøyaktig den syntetiske IR-en, og at 100 % endrer halen over tid uten å endre de tidlige refleksjonene, nivået eller RT.
 - **Mellomtone:** at 700–1200 Hz i halen ligger 1,5–4,5 dB under naboområdene.
 - **Dynamisk EQ:** at en sterk tone i båndet dempes med Range, at svakt signal og toner utenfor båndet ikke endres, og at dempingen meldes til visningen.
 - **Dra-håndtak:** at LS, HC, terskel og Range endres riktig når håndtakene flyttes.
@@ -87,6 +91,7 @@ Uten Xcode (bare Command Line Tools) virker `cmake -B build -G "Unix Makefiles" 
 | Fil | Innhold |
 |---|---|
 | `Source/RomSyntese.*` | Lager impulsresponsen: rommene, tidlige refleksjoner, frekvensavhengig hale og diffusion. |
+| `Source/Modulasjon.h` | Modulerte forsinkelser for halen (Hermite-interpolasjon). |
 | `Source/Analysator.*` | RTA: låsefri kø fra lydtråden og FFT med glatting for visningen. |
 | `Source/PluginProcessor.*` | Parametere, bakgrunnstråd for nye impulsresponser, konvolusjon, EQ, dynamisk EQ, bredde og mix. |
 | `Source/PluginEditor.*` | GUI: DECAY-, EQ- og DYN EQ-visning med dra-håndtak og RTA, knotter, romvalg og skalerbart vindu. |

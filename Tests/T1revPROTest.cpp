@@ -339,6 +339,58 @@ int main (int argc, char** argv)
         sjekk (p.parametre.getParameter ("dyn2_range")->getCurrentValueAsText() == "Off", "dyn EQ: bånd 2 av som standard");
     }
 
+    // 6e. Modulasjon: dybde 0 gir nøyaktig den syntetiske IR-en; dybde 100 %
+    // endrer halen (tidsvarierende), men ikke starten eller nivået.
+    {
+        FiolinProcessor pm;
+        sett (pm, "mix", 100.0f); sett (pm, "dyn1_range", 0.0f); sett (pm, "lengde_s", 2.0f);
+        auto korr = [] (const AudioBuffer<float>& a, const AudioBuffer<float>& b, int fra, int til)
+        {
+            double ab = 0, aa = 0, bb = 0;
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = fra; i < til; ++i)
+                {
+                    const double x = a.getSample (ch, i), y = b.getSample (ch, i);
+                    ab += x * y; aa += x * x; bb += y * y;
+                }
+            return ab / std::sqrt (aa * bb + 1e-30);
+        };
+        sett (pm, "mod_depth", 0.0f);
+        auto statisk = impulsrespons (pm, 48000.0, 2.5);
+        const auto fasit = romsyntese::lagIR (romsyntese::rom()[0], 2.0, 0.025, 0.0f, 0.8, 48000.0);
+        AudioBuffer<float> fasitKort (2, statisk.getNumSamples());
+        fasitKort.clear();
+        for (int ch = 0; ch < 2; ++ch)
+            fasitKort.copyFrom (ch, 0, fasit, ch, 0, jmin (fasit.getNumSamples(), statisk.getNumSamples()));
+        sjekk (korr (statisk, fasitKort, 0, 120000) > 0.999, "modulasjon 0 %: delt IR = hel IR", korr (statisk, fasitKort, 0, 120000));
+
+        sett (pm, "mod_depth", 100.0f);
+        auto mod1 = impulsrespons (pm, 48000.0, 2.5);
+        const int tidligSlutt = (int) ((0.025 + FiolinProcessor::delingEtterPre) * 48000);
+        sjekk (korr (mod1, statisk, 0, tidligSlutt) > 0.999, "modulasjon: tidlige refleksjoner urørt", korr (mod1, statisk, 0, tidligSlutt));
+        const double sen = korr (mod1, statisk, 48000, 96000);
+        sjekk (sen < 0.9, "modulasjon 100 %: halen endres", sen);
+        const double nivaa = 10.0 * std::log10 (energi (mod1, 48000, 0.0, 2.5) / energi (statisk, 48000, 0.0, 2.5));
+        sjekk (std::abs (nivaa) < 1.0, "modulasjon 100 %: samme nivå (dB)", nivaa);
+        sjekk (std::abs (maalRT (mod1, 48000) - maalRT (statisk, 48000)) < 0.15, "modulasjon: samme RT", maalRT (mod1, 48000));
+        // Tidsvarierende: en ny impuls litt senere gir en annen hale.
+        MidiBuffer midi;
+        AudioBuffer<float> b (2, 512);
+        for (int i = 0; i < 37; ++i) { b.clear(); pm.processBlock (b, midi); }
+        AudioBuffer<float> mod2 (2, mod1.getNumSamples());
+        for (int pos = 0; pos < mod2.getNumSamples(); pos += 512)
+        {
+            const int len = jmin (512, mod2.getNumSamples() - pos);
+            AudioBuffer<float> bb (2, len);
+            bb.clear();
+            if (pos == 0) { bb.setSample (0, 0, 1.0f); bb.setSample (1, 0, 1.0f); }
+            pm.processBlock (bb, midi);
+            for (int ch = 0; ch < 2; ++ch) mod2.copyFrom (ch, pos, bb, ch, 0, len);
+        }
+        sjekk (korr (mod1, mod2, 48000, 96000) < 0.95, "modulasjon: halen er tidsvarierende", korr (mod1, mod2, 48000, 96000));
+        sjekk (pm.parametre.getParameter ("mod_rate")->getCurrentValueAsText() == "0.60 Hz", "mod rate vises som «0.60 Hz»");
+    }
+
     // 7. Lagring/gjenoppretting av tilstand.
     sett (p, "predelay_ms", 33.0f);
     MemoryBlock mb;

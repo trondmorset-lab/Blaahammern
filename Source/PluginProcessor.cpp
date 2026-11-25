@@ -68,6 +68,9 @@ AudioProcessorValueTreeState::ParameterLayout FiolinProcessor::lagParametre()
                     })
                     .withStringFromValueFunction ([] (float v, int) { return v < 0.05f ? String ("Off") : "-" + des (v, 1) + " dB"; });
 
+    auto hzLfo = A().withLabel ("Hz").withValueFromStringFunction (tolk)
+                    .withStringFromValueFunction ([] (float v, int) { return des (v, 2) + " Hz"; });
+
     NormalisableRange<float> lengdeRange (0.3f, 10.0f, 0.1f);
     lengdeRange.setSkewForCentre (2.5f);
     NormalisableRange<float> preRange (0.0f, 150.0f, 1.0f);
@@ -84,6 +87,8 @@ AudioProcessorValueTreeState::ParameterLayout FiolinProcessor::lagParametre()
         std::make_unique<P> (ParameterID { "predelay_ms", 2 }, "Pre-Delay", preRange, 25.0f, ms),
         std::make_unique<P> (ParameterID { "tidlige", 2 }, "Early Reflections", NormalisableRange<float> (-24.0f, 6.0f, 0.5f), 0.0f, db),
         std::make_unique<P> (ParameterID { "diffusion", 3 }, "Diffusion", NormalisableRange<float> (0.0f, 100.0f, 1.0f), 80.0f, prosent),
+        std::make_unique<P> (ParameterID { "mod_depth", 5 }, "Mod Depth", NormalisableRange<float> (0.0f, 100.0f, 1.0f), 35.0f, prosent),
+        std::make_unique<P> (ParameterID { "mod_rate", 5 }, "Mod Rate", logRange (0.1f, 3.0f, 0.01f), 0.6f, hzLfo),
         std::make_unique<P> (ParameterID { "lavkutt", 1 }, "Low Cut", lavRange, 20.0f, hzLav),
         std::make_unique<P> (ParameterID { "loshelf_freq", 3 }, "Low Shelf Freq", logRange (50.0f, 1000.0f, 1.0f), 250.0f, hz),
         std::make_unique<P> (ParameterID { "loshelf_gain", 3 }, "Low Shelf Gain", NormalisableRange<float> (-12.0f, 12.0f, 0.1f), 0.0f, db),
@@ -158,6 +163,8 @@ FiolinProcessor::FiolinProcessor()
     pLoGain   = parametre.getRawParameterValue ("loshelf_gain");
     pHiFreq   = parametre.getRawParameterValue ("hishelf_freq");
     pHiGain   = parametre.getRawParameterValue ("hishelf_gain");
+    pModDybde = parametre.getRawParameterValue ("mod_depth");
+    pModRate  = parametre.getRawParameterValue ("mod_rate");
 
     for (int b = 0; b < antallDyn; ++b)
     {
@@ -219,10 +226,34 @@ void FiolinProcessor::byggIR (bool tving)
 
     auto ir = romsyntese::lagIR (romsyntese::rom()[(size_t) o.rom], o.rt, o.pre * 0.001,
                                  o.tidlige, o.diff * 0.01, o.fs);
-    konvolusjon.loadImpulseResponse (std::move (ir), o.fs,
-                                     dsp::Convolution::Stereo::yes,
-                                     dsp::Convolution::Trim::no,
-                                     dsp::Convolution::Normalise::no);
+    // Del IR-en: tidlig del umodulert, halen til modulasjonen. Halen flyttes
+    // fram med modulasjonens basisforsinkelse, så summen er uendret ved dybde 0.
+    const int n = ir.getNumSamples();
+    const int s0 = jmin (n, (int) ((o.pre * 0.001 + delingEtterPre) * o.fs));
+    const int xf = jmax (1, (int) (delingOvergang * o.fs));
+    const int d = (int) std::round (Modulasjon::basis * o.fs);
+    const int nTidlig = jmin (n, s0 + xf);
+    AudioBuffer<float> tidlig (2, jmax (1, nTidlig)), hale (2, jmax (1, n - d));
+    tidlig.clear(); hale.clear();
+    for (int ch = 0; ch < 2; ++ch)
+    {
+        const float* kilde = ir.getReadPointer (ch);
+        float* t = tidlig.getWritePointer (ch);
+        float* h = hale.getWritePointer (ch);
+        for (int i = 0; i < n; ++i)
+        {
+            float w = 1.0f;
+            if (i < s0) w = 0.0f;
+            else if (i < s0 + xf) w = 0.5f - 0.5f * std::cos (MathConstants<float>::pi * (float) (i - s0) / (float) xf);
+            if (i < nTidlig) t[i] = kilde[i] * (1.0f - w);
+            if (i >= d) h[i - d] = kilde[i] * w;
+        }
+    }
+    for (auto* k : { &konvTidlig, &konvHale })
+        k->loadImpulseResponse (std::move (k == &konvTidlig ? tidlig : hale), o.fs,
+                                dsp::Convolution::Stereo::yes,
+                                dsp::Convolution::Trim::no,
+                                dsp::Convolution::Normalise::no);
 }
 
 void FiolinProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
@@ -232,13 +263,16 @@ void FiolinProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 
     {
         const ScopedLock sl (irLaas);
-        konvolusjon.prepare (spec);
+        konvTidlig.prepare (spec);
+        konvHale.prepare (spec);
     }
     byggIR (true);
     bedt = lastet;
 
     mikser.prepare (spec);
-    mikser.setWetLatency ((float) konvolusjon.getLatency());
+    mikser.setWetLatency ((float) konvTidlig.getLatency());
+    modulasjon.prepare (sampleRate);
+    haleBuf.setSize (2, samplesPerBlock);
     setLatencySamples (0);
 
     lavkutt.prepare (spec);
@@ -317,7 +351,20 @@ void FiolinProcessor::processBlock (AudioBuffer<float>& buffer, MidiBuffer&)
     vaat.copyFrom (1, 0, buffer, 1, 0, n);
     auto vaatBlokk = dsp::AudioBlock<float> (vaat).getSubsetChannelBlock (0, 2).getSubBlock (0, (size_t) n);
     dsp::ProcessContextReplacing<float> ctx (vaatBlokk);
-    konvolusjon.process (ctx);
+    if (haleBuf.getNumSamples() < n)
+        haleBuf.setSize (2, n, false, false, true);
+    haleBuf.copyFrom (0, 0, vaat, 0, 0, n);
+    haleBuf.copyFrom (1, 0, vaat, 1, 0, n);
+    konvTidlig.process (ctx);
+    {
+        auto haleBlokk = dsp::AudioBlock<float> (haleBuf).getSubsetChannelBlock (0, 2).getSubBlock (0, (size_t) n);
+        dsp::ProcessContextReplacing<float> hctx (haleBlokk);
+        konvHale.process (hctx);
+        modulasjon.process (haleBuf.getWritePointer (0), haleBuf.getWritePointer (1), n,
+                            pModDybde->load() / 100.0f, pModRate->load());
+        vaat.addFrom (0, 0, haleBuf, 0, 0, n);
+        vaat.addFrom (1, 0, haleBuf, 1, 0, n);
+    }
 
     const double fs = rate.load();
     lavkutt.setCutoffFrequency (jmin (pLavkutt->load(), (float) fs * 0.45f));

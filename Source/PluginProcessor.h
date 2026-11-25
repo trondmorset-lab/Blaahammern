@@ -4,6 +4,7 @@
 #include <juce_dsp/juce_dsp.h>
 #include <atomic>
 #include "Analysator.h"
+#include "Modulasjon.h"
 
 // T1 revPRO: konvolusjonsklang der impulsresponsen syntetiseres i pluginen
 // (tre romtyper, fritt valgt lengde i sekunder).
@@ -67,6 +68,12 @@ public:
     AnalyseFifo rtaFoerDyn;
 
 private:
+public:
+    // Der IR-en deles: så lenge etter predelay starter halen (s), og
+    // overgangen (s).
+    static constexpr double delingEtterPre = 0.035, delingOvergang = 0.02;
+
+private:
     struct Oppsett
     {
         int rom = -1; float rt = 0, pre = 0, tidlige = 0, diff = 0; double fs = 0;
@@ -102,7 +109,14 @@ private:
     Oppsett lastet, bedt;
     std::atomic<double> rate { 48000.0 };
 
-    juce::dsp::Convolution konvolusjon { juce::dsp::Convolution::NonUniform { 512 } };
+    // IR-en deles i to: starten (tidlige refleksjoner, umodulert) og halen,
+    // som går gjennom modulasjonen.
+    juce::dsp::Convolution konvTidlig { juce::dsp::Convolution::NonUniform { 512 } };
+    juce::dsp::Convolution konvHale { juce::dsp::Convolution::NonUniform { 512 } };
+    Modulasjon modulasjon;
+    juce::AudioBuffer<float> haleBuf;
+    std::atomic<float>* pModDybde = nullptr;
+    std::atomic<float>* pModRate = nullptr;
     juce::dsp::DryWetMixer<float> mikser { 8192 };
     juce::dsp::StateVariableTPTFilter<float> lavkutt, hoykutt;
     juce::SmoothedValue<float> breddeSmooth;

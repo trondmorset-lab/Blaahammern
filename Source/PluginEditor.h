@@ -125,7 +125,7 @@ private:
     std::array<juce::TextButton, 3> faner;
     Knott decay, predelay, diffusion, tidlige,
           lavkutt, loFreq, loGain, hoykutt, hiFreq, hiGain,
-          bredde, mix;
+          bredde, mix, modDybde, modRate;
     std::array<Knott, FiolinProcessor::antallDyn> dynFreq, dynQ, dynThr, dynRange;
     int visteModus = -1;
 
