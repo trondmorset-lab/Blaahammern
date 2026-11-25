@@ -53,6 +53,19 @@ public:
     // frekvens f, for EQ-visningen.
     static float eqRespons (const juce::AudioProcessorValueTreeState&, double f, double fs = 48000.0);
 
+    // Dynamisk EQ: to båndfiltre på klangen som demper bare når nivået i
+    // båndet går over terskelen (Thresh), med maks demping Range.
+    static constexpr int antallDyn = 2;
+    static juce::String dynId (int band, const char* navn) { return "dyn" + juce::String (band + 1) + "_" + navn; }
+    // Respons i dB ved f for en peaking-EQ (brukes av visningen).
+    static float toppRespons (double f, double f0, double q, double gainDb, double fs = 48000.0);
+    // Nåværende demping per bånd (dB, <= 0), for visningen.
+    float hentDynGr (int band) const { return dynGr[(size_t) band].load(); }
+    // Nivå i båndet slik detektoren ser det (dBFS), for visningen.
+    float hentDynNivaa (int band) const { return dynNivaa[(size_t) band].load(); }
+    // RTA av klangen før den dynamiske EQ-en (DYN EQ-visningen).
+    AnalyseFifo rtaFoerDyn;
+
 private:
     struct Oppsett
     {
@@ -97,6 +110,22 @@ private:
     std::array<juce::dsp::IIR::Filter<float>, 2> loShelf, hiShelf;
     std::array<float, 4> shelfSist { -1, -1, -1, -1 };
     juce::AudioBuffer<float> vaat;
+
+    struct DynBand
+    {
+        std::atomic<float>* frekv = nullptr;
+        std::atomic<float>* q = nullptr;
+        std::atomic<float>* terskel = nullptr;
+        std::atomic<float>* range = nullptr;
+        juce::dsp::StateVariableTPTFilter<float> detektor;
+        float konvolutt = 0.0f;      // effekt (kvadrat) i båndet
+        float gr = 0.0f;             // demping nå (dB)
+        double b0 = 1, b1 = 0, b2 = 0, a1 = 0, a2 = 0;
+        std::array<double, 2> z1 {}, z2 {};
+    };
+    std::array<DynBand, antallDyn> dyn;
+    std::array<std::atomic<float>, antallDyn> dynGr {}, dynNivaa {};
+    void prosesserDyn (float* l, float* r, int n);
 
     std::atomic<float>* pRom = nullptr;
     std::atomic<float>* pMix = nullptr;

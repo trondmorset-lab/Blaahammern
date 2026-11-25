@@ -1,6 +1,7 @@
 // Kjører FiolinProcessor uten DAW og sjekker grunnleggende oppførsel.
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "RomSyntese.h"
 #include <juce_events/juce_events.h>
 #include <cstdio>
 
@@ -279,6 +280,65 @@ int main (int argc, char** argv)
         sjekk (p.rtaVaat.pull (tmp, 512) == 512 && p.rtaInn.pull (tmp, 512) > 0, "prosessoren sender RTA-data");
     }
 
+    // 6c. Mellomtonen 700-1200 Hz i halen er dempet i forhold til naboene.
+    {
+        const auto ir = romsyntese::lagIR (romsyntese::rom()[0], 2.4, 0.025, 0.0f, 0.8, 48000.0);
+        dsp::FFT fft (17);
+        const int N = 1 << 17;
+        std::vector<float> data ((size_t) (2 * N), 0.0f);
+        for (int i = 0; i < jmin (N, ir.getNumSamples()); ++i) data[(size_t) i] = ir.getSample (0, i);
+        fft.performFrequencyOnlyForwardTransform (data.data());
+        auto snitt = [&] (double lo, double hi)
+        {
+            double e = 0; int n = 0;
+            for (int k = (int) (lo * N / 48000.0); k <= (int) (hi * N / 48000.0); ++k) { e += (double) data[(size_t) k] * data[(size_t) k]; ++n; }
+            return 10.0 * std::log10 (e / n);
+        };
+        const double midt = snitt (750, 1150), under = snitt (350, 600), over = snitt (1600, 2800);
+        sjekk (midt < 0.5 * (under + over) - 1.5, "halen: 700-1200 Hz senket (dB under naboene)", 0.5 * (under + over) - midt);
+        sjekk (midt > 0.5 * (under + over) - 4.5, "halen: senkningen er mild", 0.5 * (under + over) - midt);
+    }
+
+    // 6d. Dynamisk EQ: demper bare når båndet er sterkt, og bare i båndet.
+    {
+        auto kjorSinus = [] (float hz, float amp, float range, float* gr = nullptr)
+        {
+            FiolinProcessor pd;
+            sett (pd, "mix", 100.0f); sett (pd, "lengde_s", 1.0f);
+            sett (pd, "dyn1_freq", 950.0f); sett (pd, "dyn1_thresh", -40.0f); sett (pd, "dyn1_range", range);
+            pd.prepareToPlay (48000.0, 512);
+            MidiBuffer midi;
+            AudioBuffer<float> b (2, 512);
+            for (int i = 0; i < 40; ++i) { b.clear(); pd.processBlock (b, midi); Thread::sleep (10); }
+            double e = 0; int fase = 0;
+            const int blokker = 48000 * 3 / 512;
+            for (int k = 0; k < blokker; ++k)
+            {
+                for (int i = 0; i < 512; ++i)
+                {
+                    const float v = amp * std::sin (MathConstants<float>::twoPi * hz * (float) (fase++) / 48000.0f);
+                    b.setSample (0, i, v); b.setSample (1, i, v);
+                }
+                pd.processBlock (b, midi);
+                if (k > blokker - 48)
+                    for (int i = 0; i < 512; ++i) e += (double) b.getSample (0, i) * b.getSample (0, i);
+            }
+            if (gr != nullptr) *gr = pd.hentDynGr (0);
+            return 10.0 * std::log10 (e + 1e-30);
+        };
+        float gr = 0;
+        const double sterkUt = kjorSinus (950, 0.5f, 0.0f), sterkInn = kjorSinus (950, 0.5f, 12.0f, &gr);
+        sjekk (sterkUt - sterkInn > 5.0, "dyn EQ: sterk 950 Hz dempes (dB)", sterkUt - sterkInn);
+        sjekk (sterkUt - sterkInn < 12.5, "dyn EQ: maks Range", sterkUt - sterkInn);
+        sjekk (gr < -5.0f, "dyn EQ: rapporterer demping til visningen", gr);
+        const double svakUt = kjorSinus (950, 0.001f, 0.0f), svakInn = kjorSinus (950, 0.001f, 12.0f);
+        sjekk (std::abs (svakUt - svakInn) < 0.3, "dyn EQ: svakt signal under terskel uendret", svakUt - svakInn);
+        const double hoyUt = kjorSinus (6000, 0.5f, 0.0f), hoyInn = kjorSinus (6000, 0.5f, 12.0f);
+        sjekk (std::abs (hoyUt - hoyInn) < 1.0, "dyn EQ: 6 kHz utenfor båndet nesten uendret", hoyUt - hoyInn);
+        sjekk (std::abs (FiolinProcessor::toppRespons (950, 950, 1.0, -6.0) + 6.0f) < 0.1f, "dyn EQ: responskurve -6 dB i senter");
+        sjekk (p.parametre.getParameter ("dyn2_range")->getCurrentValueAsText() == "Off", "dyn EQ: bånd 2 av som standard");
+    }
+
     // 7. Lagring/gjenoppretting av tilstand.
     sett (p, "predelay_ms", 33.0f);
     MemoryBlock mb;
@@ -350,6 +410,76 @@ int main (int argc, char** argv)
         };
         faner (ed.get());
         lagre ("screenshot.png");
+
+        // Dra-håndtak i EQ-visningen: LS til 400 Hz og +3 dB i kurven (= +6 dB gain).
+        if (kv != nullptr)
+        {
+            int ls = -1, hc = -1;
+            for (int i = 0; i < kv->antallHandtak(); ++i)
+            {
+                if (kv->handtakNavn (i) == "LS") ls = i;
+                if (kv->handtakNavn (i) == "HC") hc = i;
+            }
+            sjekk (ls >= 0 && kv->finnHandtak (kv->handtakPos (ls)) == ls, "EQ-visning: finner LS-håndtaket");
+            // Finn punktet for 400 Hz / +3 dB ved å flytte og lese tilbake.
+            const auto start = kv->handtakPos (ls);
+            kv->flyttHandtak (ls, start.translated (40.0f, -20.0f));
+            const float f1 = p3.parametre.getRawParameterValue ("loshelf_freq")->load();
+            const float g1 = p3.parametre.getRawParameterValue ("loshelf_gain")->load();
+            sjekk (f1 > 250.0f && g1 > 1.0f, "EQ-visning: dra LS opp og til høyre øker frekvens og gain", g1);
+            sjekk (kv->handtakPos (ls).getDistanceFrom (start.translated (40.0f, -20.0f)) < 3.0f, "EQ-visning: LS følger musen", kv->handtakPos (ls).getDistanceFrom (start.translated (40.0f, -20.0f)));
+            kv->flyttHandtak (hc, { 10000.0f, kv->handtakPos (hc).y });
+            sjekk (p3.parametre.getParameter ("hoykutt")->getCurrentValueAsText() == "Off", "EQ-visning: HC dratt helt til høyre = Off");
+            sett (p3, "loshelf_gain", 0.0f); sett (p3, "loshelf_freq", 250.0f); sett (p3, "hoykutt", 12000.0f);
+
+            // DYN EQ: håndtak 1 (terskel) og trekanten (range)
+            kv->settModus (KlangVisning::Modus::dyn);
+            sjekk (kv->antallHandtak() == 4, "DYN-visning: to håndtak per bånd", kv->antallHandtak());
+            const auto t1 = kv->handtakPos (0);
+            kv->flyttHandtak (0, t1.translated (0.0f, 30.0f));
+            const float terskel = p3.parametre.getRawParameterValue ("dyn1_thresh")->load();
+            sjekk (terskel < -38.0f, "DYN-visning: dra terskel ned", terskel);
+            kv->flyttHandtak (1, kv->handtakPos (1).translated (0.0f, 30.0f));
+            const float range = p3.parametre.getRawParameterValue ("dyn1_range")->load();
+            sjekk (range > 4.0f, "DYN-visning: dra range ned gir mer demping", range);
+            sett (p3, "dyn1_thresh", -48.0f); sett (p3, "dyn1_range", 6.0f);
+            sett (p3, "dyn2_range", 4.0f); sett (p3, "dyn2_thresh", -50.0f);
+        }
+        // Spill mer signal så den dynamiske EQ-en jobber, og ta bilde.
+        {
+            MidiBuffer midi;
+            int n0 = 0;
+            for (int blokk = 0; blokk < 200; ++blokk)
+            {
+                AudioBuffer<float> b (2, 512);
+                for (int i = 0; i < 512; ++i)
+                {
+                    const float t = (float) (n0 + i) / 48000.0f;
+                    float v = 0;
+                    for (int h = 1; h < 20; ++h) v += std::sin (6.2831853f * 440.0f * (float) h * t) / (float) h;
+                    b.setSample (0, i, 0.15f * v); b.setSample (1, i, 0.15f * v);
+                }
+                n0 += 512;
+                p3.processBlock (b, midi);
+                if (kv != nullptr && blokk % 8 == 0) kv->oppdaterNaa();
+            }
+        }
+        if (auto* fe = dynamic_cast<FiolinEditor*> (ed.get()))
+            for (auto* barn : fe->getChildren())
+                for (auto* b2 : barn->getChildren())
+                    if (auto* tb = dynamic_cast<TextButton*> (b2))
+                        if (tb->getButtonText() == "DYN EQ" && tb->onClick) tb->onClick();
+        std::function<void (Component*)> dynFane = [&] (Component* c)
+        {
+            if (auto* b = dynamic_cast<TextButton*> (c))
+            {
+                if (b->getButtonText() == "EQ") b->setToggleState (false, dontSendNotification);
+                if (b->getButtonText() == "DYN EQ") b->setToggleState (true, dontSendNotification);
+            }
+            for (auto* barn : c->getChildren()) dynFane (barn);
+        };
+        dynFane (ed.get());
+        lagre ("screenshot-dyn.png");
     }
 
     std::printf ("%s: %d feil\n", feil == 0 ? "BESTÅTT" : "FEILET", feil);

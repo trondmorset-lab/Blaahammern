@@ -24,9 +24,15 @@ namespace romsyntese
 
     const std::array<RomOppsett, 3>& rom();
 
-    // RT-multiplikator for båndene (bass, lav mellom, mellom, høy mellom, diskant).
+    // RT-multiplikator for båndene (bass, lav mellom, mellom, høy mellom,
+    // diskant). Indeksene under brukes av visningen.
     struct Band { double lo, hi, mult; };
-    std::array<Band, 5> band (const RomOppsett&);
+    constexpr int antallBand = 5, bandBass = 0, bandMidt = 2, bandDiskant = 4;
+    std::array<Band, antallBand> band (const RomOppsett&);
+
+    // Myk senkning av halen i 700-1200 Hz: fast (dB), ekstra som fases inn
+    // utover i halen (dB), og senterfrekvens.
+    constexpr double midtDipDb = -1.5, midtDipSenDb = -2.5, midtDipHz = 950.0;
 
     struct Refleksjon { double tid; float pan; float amp; float itd; };
     std::vector<Refleksjon> refleksjoner (const RomOppsett&, double predelay);

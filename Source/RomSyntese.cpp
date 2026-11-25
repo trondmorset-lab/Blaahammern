@@ -25,6 +25,19 @@ namespace
             return k;
         }
 
+        // Peaking-EQ (RBJ).
+        static Biquad topp (double f, double q, double gainDb, double fs)
+        {
+            const double A = std::pow (10.0, gainDb / 40.0);
+            const double w = MathConstants<double>::twoPi * jmin (f, fs * 0.45) / fs;
+            const double cw = std::cos (w), alpha = std::sin (w) / (2.0 * q);
+            const double a0 = 1.0 + alpha / A;
+            Biquad k;
+            k.b0 = (1 + alpha * A) / a0; k.b1 = -2 * cw / a0; k.b2 = (1 - alpha * A) / a0;
+            k.a1 = -2 * cw / a0;         k.a2 = (1 - alpha / A) / a0;
+            return k;
+        }
+
         void kjor (std::vector<float>& x) const
         {
             double x1 = 0, x2 = 0, y1 = 0, y2 = 0;
@@ -66,7 +79,7 @@ const std::array<RomOppsett, 3>& rom()
     return r;
 }
 
-std::array<Band, 5> band (const RomOppsett& r)
+std::array<Band, antallBand> band (const RomOppsett& r)
 {
     return {{ { 0.0, 250.0, r.bassRT },
               { 250.0, 1000.0, 1.03 },
@@ -144,6 +157,20 @@ AudioBuffer<float> lagIR (const RomOppsett& r, double rt, double predelay, float
         }
         hp4 (h, r.hp, fs);
         Biquad::lag (true, r.lp, fs, 0.55).kjor (h);
+        // Myk senkning rundt 950 Hz (700-1200 Hz) i halen, så den ikke blir
+        // hard i mellomtonen: fast midtDipDb, og i tillegg midtDipSenDb som
+        // fases inn over halen (mellomtonen dør litt raskere ut).
+        {
+            std::vector<float> dyp (h);
+            Biquad::topp (midtDipHz, 0.8, midtDipDb, fs).kjor (h);
+            Biquad::topp (midtDipHz, 0.8, midtDipDb + midtDipSenDb, fs).kjor (dyp);
+            const double tau = 0.6 * rt * fs;
+            for (int i = haleStart; i < n; ++i)
+            {
+                const float w = (float) jmin (1.0, (i - haleStart) / tau);
+                h[(size_t) i] += w * (dyp[(size_t) i] - h[(size_t) i]);
+            }
+        }
 
         // Tidlige refleksjoner: korte, myke pulser med panorering.
         auto& e = er[(size_t) ch];
@@ -169,6 +196,7 @@ AudioBuffer<float> lagIR (const RomOppsett& r, double rt, double predelay, float
         }
         hp4 (e, 120.0, fs);
         lp4 (e, 9000.0, fs);
+        Biquad::topp (midtDipHz, 0.8, midtDipDb * 0.5, fs).kjor (e);
     }
 
     const double eh = energi (hale[0]) + energi (hale[1]);

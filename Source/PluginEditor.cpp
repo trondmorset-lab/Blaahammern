@@ -140,23 +140,223 @@ KlangVisning::KlangVisning (FiolinProcessor& pr) : proc (pr), p (pr.parametre)
 
 void KlangVisning::timerCallback()
 {
-    static const char* ider[] = { "rom", "lengde_s", "predelay_ms", "tidlige", "diffusion",
-                                  "lavkutt", "loshelf_freq", "loshelf_gain", "hishelf_freq",
-                                  "hishelf_gain", "hoykutt" };
     std::vector<float> na;
-    for (auto* id : ider) na.push_back (p.getRawParameterValue (id)->load());
-    // Tøm RTA-køene hele tiden, så visningen er fersk når EQ-fanen åpnes.
+    for (auto* par : p.processor.getParameters())
+        na.push_back (par->getValue());
+    // Tøm RTA-køene hele tiden, så visningen er fersk når fanen åpnes.
     spInn.hent (proc.rtaInn);
     spVaat.hent (proc.rtaVaat);
-    if (modus == Modus::eq)
+    spFoerDyn.hent (proc.rtaFoerDyn);
+    if (modus != Modus::decay)
     {
-        spInn.beregn (proc.hentRate());
         spVaat.beregn (proc.hentRate());
+        (modus == Modus::eq ? spInn : spFoerDyn).beregn (proc.hentRate());
         sist = std::move (na);
         repaint();
         return;
     }
     if (na != sist) { sist = std::move (na); repaint(); }
+}
+
+Rectangle<float> KlangVisning::plottOmr() const
+{
+    return getLocalBounds().toFloat().withTrimmedLeft (50).withTrimmedRight (modus == Modus::decay ? 18 : 46)
+               .withTrimmedTop (42).withTrimmedBottom (26);
+}
+
+namespace
+{
+    constexpr double fMin = 20.0, fMaks = 20000.0;
+    constexpr float dbMaks = 18.0f, rtaMin = -90.0f, rtaMaks = 0.0f;
+}
+
+float KlangVisning::fx (double f) const
+{
+    const auto r = plottOmr();
+    return r.getX() + (float) (std::log (f / fMin) / std::log (fMaks / fMin)) * r.getWidth();
+}
+
+double KlangVisning::fFraX (float x) const
+{
+    const auto r = plottOmr();
+    return fMin * std::pow (fMaks / fMin, (double) ((x - r.getX()) / r.getWidth()));
+}
+
+float KlangVisning::eqY (float db) const
+{
+    const auto r = plottOmr();
+    return r.getCentreY() - jlimit (-dbMaks, dbMaks, db) / dbMaks * r.getHeight() * 0.5f;
+}
+
+float KlangVisning::eqDb (float y) const
+{
+    const auto r = plottOmr();
+    return (r.getCentreY() - y) / (r.getHeight() * 0.5f) * dbMaks;
+}
+
+float KlangVisning::rtaY (float db) const
+{
+    const auto r = plottOmr();
+    return r.getY() + (rtaMaks - jlimit (rtaMin, rtaMaks, db)) / (rtaMaks - rtaMin) * r.getHeight();
+}
+
+float KlangVisning::rtaDb (float y) const
+{
+    const auto r = plottOmr();
+    return rtaMaks - (y - r.getY()) / r.getHeight() * (rtaMaks - rtaMin);
+}
+
+float KlangVisning::v (const String& id) const { return p.getRawParameterValue (id)->load(); }
+
+void KlangVisning::settParam (const String& id, float verdi)
+{
+    if (auto* par = p.getParameter (id))
+    {
+        const auto& r = p.getParameterRange (id);
+        par->setValueNotifyingHost (r.convertTo0to1 (r.snapToLegalValue (jlimit (r.start, r.end, verdi))));
+    }
+}
+
+std::vector<KlangVisning::Handtak> KlangVisning::handtak() const
+{
+    std::vector<Handtak> h;
+    if (modus == Modus::eq)
+    {
+        const float lc = v ("lavkutt"), hc = v ("hoykutt");
+        h.push_back ({ { fx (jmax (20.0f, lc)), eqY (FiolinProcessor::eqRespons (p, lc)) }, "lavkutt", {}, {}, "LC", YType::ingen, lc > 20.5f, farge::aksent });
+        h.push_back ({ { fx (v ("loshelf_freq")), eqY (v ("loshelf_gain") * 0.5f) }, "loshelf_freq", "loshelf_gain", {}, "LS",
+                       YType::gainHalv, std::abs (v ("loshelf_gain")) > 0.05f, farge::aksent });
+        h.push_back ({ { fx (v ("hishelf_freq")), eqY (v ("hishelf_gain") * 0.5f) }, "hishelf_freq", "hishelf_gain", {}, "HS",
+                       YType::gainHalv, std::abs (v ("hishelf_gain")) > 0.05f, farge::aksent });
+        const float hcv = jmin (hc, 19000.0f);
+        h.push_back ({ { fx (hcv), eqY (FiolinProcessor::eqRespons (p, hcv)) }, "hoykutt", {}, {}, "HC", YType::ingen, hc < 19950.0f, farge::aksent });
+    }
+    else if (modus == Modus::dyn)
+    {
+        for (int b = 0; b < FiolinProcessor::antallDyn; ++b)
+        {
+            const auto fId = FiolinProcessor::dynId (b, "freq"), qId = FiolinProcessor::dynId (b, "q");
+            const float f = v (fId), range = v (FiolinProcessor::dynId (b, "range"));
+            const auto c = b == 0 ? farge::aksent : farge::bass;
+            h.push_back ({ { fx (f), rtaY (v (FiolinProcessor::dynId (b, "thresh"))) }, fId, FiolinProcessor::dynId (b, "thresh"), qId,
+                           String (b + 1), YType::terskel, range > 0.05f, c });
+            h.push_back ({ { fx (f), eqY (-range) }, fId, FiolinProcessor::dynId (b, "range"), qId,
+                           {}, YType::range, range > 0.05f, c });
+        }
+    }
+    return h;
+}
+
+int KlangVisning::finnHandtak (Point<float> pos) const
+{
+    const auto h = handtak();
+    int best = -1;
+    float bestAvstand = 14.0f;
+    for (size_t i = 0; i < h.size(); ++i)
+    {
+        const float d = h[i].pos.getDistanceFrom (pos);
+        if (d < bestAvstand) { bestAvstand = d; best = (int) i; }
+    }
+    return best;
+}
+
+void KlangVisning::flyttHandtak (int i, Point<float> pos)
+{
+    const auto h = handtak();
+    if (! isPositiveAndBelow (i, (int) h.size()))
+        return;
+    const auto& ht = h[(size_t) i];
+    const auto r = plottOmr();
+    settParam (ht.xId, (float) fFraX (jlimit (r.getX(), r.getRight(), pos.x)));
+    switch (ht.y)
+    {
+        case YType::gainHalv: settParam (ht.yId, 2.0f * eqDb (pos.y)); break;
+        case YType::terskel:  settParam (ht.yId, rtaDb (pos.y)); break;
+        case YType::range:    settParam (ht.yId, -eqDb (pos.y)); break;
+        case YType::ingen:    break;
+    }
+    repaint();
+}
+
+void KlangVisning::gest (const Handtak& h, bool start)
+{
+    for (const auto& id : { h.xId, h.yId })
+        if (id.isNotEmpty())
+            if (auto* par = p.getParameter (id))
+                start ? par->beginChangeGesture() : par->endChangeGesture();
+}
+
+void KlangVisning::mouseMove (const MouseEvent& e)
+{
+    const int na = finnHandtak (e.position);
+    if (na != hover)
+    {
+        hover = na;
+        setMouseCursor (na >= 0 ? MouseCursor::DraggingHandCursor : MouseCursor::NormalCursor);
+        repaint();
+    }
+}
+
+void KlangVisning::mouseExit (const MouseEvent&)
+{
+    if (hover >= 0 && drar < 0) { hover = -1; repaint(); }
+}
+
+void KlangVisning::mouseDown (const MouseEvent& e)
+{
+    drar = finnHandtak (e.position);
+    if (drar >= 0)
+        gest (handtak()[(size_t) drar], true);
+}
+
+void KlangVisning::mouseDrag (const MouseEvent& e)
+{
+    if (drar >= 0)
+        flyttHandtak (drar, e.position);
+}
+
+void KlangVisning::mouseUp (const MouseEvent&)
+{
+    if (drar >= 0)
+    {
+        const auto h = handtak();
+        if (isPositiveAndBelow (drar, (int) h.size()))
+            gest (h[(size_t) drar], false);
+    }
+    drar = -1;
+}
+
+void KlangVisning::mouseDoubleClick (const MouseEvent& e)
+{
+    // Dobbeltklikk på et håndtak: tilbake til standardverdiene.
+    const int i = finnHandtak (e.position);
+    if (i < 0) return;
+    const auto h = handtak()[(size_t) i];
+    for (const auto& id : { h.xId, h.yId })
+        if (id.isNotEmpty())
+            if (auto* par = p.getParameter (id))
+            {
+                par->beginChangeGesture();
+                par->setValueNotifyingHost (par->getDefaultValue());
+                par->endChangeGesture();
+            }
+    repaint();
+}
+
+void KlangVisning::mouseWheelMove (const MouseEvent& e, const MouseWheelDetails& w)
+{
+    // Musehjul over et DYN-håndtak endrer Q (båndbredden).
+    const int i = finnHandtak (e.position);
+    if (i < 0) { Component::mouseWheelMove (e, w); return; }
+    const auto h = handtak()[(size_t) i];
+    if (h.qId.isEmpty()) return;
+    if (auto* par = p.getParameter (h.qId))
+    {
+        par->beginChangeGesture();
+        settParam (h.qId, v (h.qId) * std::pow (1.15f, (w.deltaY > 0 ? 1.0f : -1.0f) * (w.isReversed ? -1.0f : 1.0f)));
+        par->endChangeGesture();
+    }
+    repaint();
 }
 
 void KlangVisning::paint (Graphics& g)
@@ -167,10 +367,10 @@ void KlangVisning::paint (Graphics& g)
     g.setColour (farge::linje);
     g.drawRoundedRectangle (alt.reduced (0.5f), 10.0f, 1.0f);
 
-    auto plott = alt.withTrimmedLeft (50).withTrimmedRight (modus == Modus::eq ? 46 : 18)
-                    .withTrimmedTop (42).withTrimmedBottom (26);
-    if (modus == Modus::decay) tegnDecay (g, plott);
-    else                       tegnEq (g, plott);
+    const auto plott = plottOmr();
+    if (modus == Modus::decay)   tegnDecay (g, plott);
+    else if (modus == Modus::eq) tegnEq (g, plott);
+    else                         tegnDyn (g, plott);
 }
 
 void KlangVisning::tegnDecay (Graphics& g, Rectangle<float> plott)
@@ -230,7 +430,7 @@ void KlangVisning::tegnDecay (Graphics& g, Rectangle<float> plott)
     };
 
     const float startDb = -8.0f;
-    auto midt = kurve (baand[2].mult, startDb);
+    auto midt = kurve (baand[romsyntese::bandMidt].mult, startDb);
     Path fyll (midt);
     fyll.lineTo (fyll.getCurrentPosition().x, plott.getBottom());
     fyll.lineTo (tx (t0), plott.getBottom());
@@ -256,11 +456,11 @@ void KlangVisning::tegnDecay (Graphics& g, Rectangle<float> plott)
     }
 
     g.setColour (farge::bass);
-    g.strokePath (kurve (baand[0].mult, startDb - 2.0f), PathStrokeType (1.6f));
+    g.strokePath (kurve (baand[romsyntese::bandBass].mult, startDb - 2.0f), PathStrokeType (1.6f));
     g.setColour (farge::aksent);
     g.strokePath (midt, PathStrokeType (2.2f));
     Path diskant;
-    PathStrokeType (1.6f).createDashedStroke (diskant, kurve (baand[4].mult, startDb - 4.0f),
+    PathStrokeType (1.6f).createDashedStroke (diskant, kurve (baand[romsyntese::bandDiskant].mult, startDb - 4.0f),
                                               std::array<float, 2> { 5.0f, 4.0f }.data(), 2);
     g.setColour (farge::diskant.withAlpha (0.85f));
     g.fillPath (diskant);
@@ -279,10 +479,10 @@ void KlangVisning::tegnDecay (Graphics& g, Rectangle<float> plott)
         g.drawVerticalLine (roundToInt (px), yy, jmin (yy + 3.0f, plott.getBottom()));
 
     // overskrift og forklaring
-    auto topp = alt.reduced (14, 10).removeFromTop (22).withTrimmedLeft (150);
+    auto topp = alt.reduced (14, 10).removeFromTop (22).withTrimmedLeft (236);
     g.setColour (farge::tekst);
     g.setFont (FontOptions (13.0f, Font::bold));
-    g.drawText (String (rom.navn) + prikk + "RT60 " + tall (rt, 1) + " s" + prikk + "Pre-delay "
+    g.drawText ("RT60 " + tall (rt, 1) + " s" + prikk + "Pre-delay "
                     + String (roundToInt (pre * 1000.0)) + " ms" + prikk + "Diffusion " + String (roundToInt (diff * 100)) + " %",
                 topp, Justification::centredLeft);
 
@@ -307,14 +507,9 @@ void KlangVisning::tegnDecay (Graphics& g, Rectangle<float> plott)
     g.drawText ("Early ref.", forkl.withTrimmedLeft (12), Justification::centredLeft);
 }
 
-void KlangVisning::tegnEq (Graphics& g, Rectangle<float> plott)
+void KlangVisning::tegnFrekvensRutenett (Graphics& g, Rectangle<float> plott)
 {
     const auto alt = getLocalBounds().toFloat();
-    const float dbMaks = 18.0f;
-    const double fMin = 20.0, fMaks = 20000.0;
-    auto fx = [&] (double f) { return plott.getX() + (float) (std::log (f / fMin) / std::log (fMaks / fMin)) * plott.getWidth(); };
-    auto dy = [&] (float db) { return plott.getCentreY() - jlimit (-dbMaks, dbMaks, db) / dbMaks * plott.getHeight() * 0.5f; };
-
     g.setFont (FontOptions (11.0f));
     for (double f : { 20.0, 50.0, 100.0, 200.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0, 20000.0 })
     {
@@ -327,25 +522,65 @@ void KlangVisning::tegnEq (Graphics& g, Rectangle<float> plott)
     for (int db = -12; db <= 12; db += 6)
     {
         g.setColour (db == 0 ? farge::linje.brighter (0.4f) : farge::linje.withAlpha (0.6f));
-        g.drawHorizontalLine (roundToInt (dy ((float) db)), plott.getX(), plott.getRight());
+        g.drawHorizontalLine (roundToInt (eqY ((float) db)), plott.getX(), plott.getRight());
         g.setColour (farge::dempet);
-        g.drawText ((db > 0 ? "+" : "") + String (db) + " dB", Rectangle<float> (alt.getX() + 4, dy ((float) db) - 8, 42, 16),
+        g.drawText ((db > 0 ? "+" : "") + String (db) + " dB", Rectangle<float> (alt.getX() + 4, eqY ((float) db) - 8, 42, 16),
                     Justification::centredRight);
     }
+}
 
-    tegnRta (g, plott);
+void KlangVisning::tegnHandtak (Graphics& g)
+{
+    const auto h = handtak();
+    g.setFont (FontOptions (11.0f, Font::bold));
+    for (size_t i = 0; i < h.size(); ++i)
+    {
+        const auto& ht = h[i];
+        const bool fokus = (int) i == hover || (int) i == drar;
+        const float d = fokus ? 13.0f : 10.0f;
+        const auto c = ht.pos;
+        if (fokus)
+        {
+            g.setColour (ht.farge.withAlpha (0.25f));
+            g.fillEllipse (Rectangle<float> (d + 10, d + 10).withCentre (c));
+        }
+        if (ht.y == YType::range)
+        {
+            // Range: liten trekant som peker nedover (maks demping).
+            Path t;
+            t.addTriangle (c.x - d * 0.5f, c.y - d * 0.4f, c.x + d * 0.5f, c.y - d * 0.4f, c.x, c.y + d * 0.5f);
+            g.setColour (ht.aktiv ? ht.farge : farge::dempet.withAlpha (0.6f));
+            g.fillPath (t);
+            g.setColour (farge::lys.withAlpha (0.8f));
+            g.strokePath (t, PathStrokeType (1.0f));
+            continue;
+        }
+        g.setColour (ht.aktiv ? farge::lys : farge::dempet.withAlpha (0.5f));
+        g.fillEllipse (Rectangle<float> (d, d).withCentre (c));
+        g.setColour (ht.y == YType::terskel ? ht.farge : farge::aksent2);
+        g.drawEllipse (Rectangle<float> (d, d).withCentre (c), 1.6f);
+        g.setColour (ht.aktiv || fokus ? farge::tekst : farge::dempet);
+        g.drawText (ht.tekst, Rectangle<float> (c.x - 30, c.y - 23, 60, 14), Justification::centred);
+    }
+}
+
+void KlangVisning::tegnEq (Graphics& g, Rectangle<float> plott)
+{
+    const auto alt = getLocalBounds().toFloat();
+    tegnFrekvensRutenett (g, plott);
+    tegnRta (g, plott, spInn, spVaat, true);
 
     Path kurve;
     const int punkter = 300;
     for (int i = 0; i <= punkter; ++i)
     {
         const double f = fMin * std::pow (fMaks / fMin, (double) i / punkter);
-        const Point<float> pt (fx (f), dy (FiolinProcessor::eqRespons (p, f)));
+        const Point<float> pt (fx (f), eqY (FiolinProcessor::eqRespons (p, f)));
         if (i == 0) kurve.startNewSubPath (pt); else kurve.lineTo (pt);
     }
     Path fyll (kurve);
-    fyll.lineTo (plott.getRight(), dy (0.0f));
-    fyll.lineTo (plott.getX(), dy (0.0f));
+    fyll.lineTo (plott.getRight(), eqY (0.0f));
+    fyll.lineTo (plott.getX(), eqY (0.0f));
     fyll.closeSubPath();
     g.setColour (farge::aksent.withAlpha (0.18f));
     g.fillPath (fyll);
@@ -354,28 +589,12 @@ void KlangVisning::tegnEq (Graphics& g, Rectangle<float> plott)
     g.setColour (farge::aksent);
     g.strokePath (kurve, PathStrokeType (2.2f, PathStrokeType::curved, PathStrokeType::rounded));
 
-    // Håndtak for hvert filter.
-    auto v = [&] (const char* id) { return p.getRawParameterValue (id)->load(); };
-    auto punkt = [&] (double f, float db, bool aktiv, const String& txt)
-    {
-        const auto c = Point<float> (fx (f), dy (db));
-        g.setColour (aktiv ? farge::lys : farge::dempet.withAlpha (0.5f));
-        g.fillEllipse (Rectangle<float> (9, 9).withCentre (c));
-        g.setColour (farge::aksent2);
-        g.drawEllipse (Rectangle<float> (9, 9).withCentre (c), 1.5f);
-        g.setColour (aktiv ? farge::tekst : farge::dempet);
-        g.drawText (txt, Rectangle<float> (c.x - 30, c.y - 22, 60, 14), Justification::centred);
-    };
-    const float lc = v ("lavkutt"), hc = v ("hoykutt");
-    punkt (lc, FiolinProcessor::eqRespons (p, lc), lc > 20.5f, "LC");
-    punkt (v ("loshelf_freq"), v ("loshelf_gain") * 0.5f, std::abs (v ("loshelf_gain")) > 0.05f, "LS");
-    punkt (v ("hishelf_freq"), v ("hishelf_gain") * 0.5f, std::abs (v ("hishelf_gain")) > 0.05f, "HS");
-    punkt (jmin (hc, 19000.0f), FiolinProcessor::eqRespons (p, jmin (hc, 19000.0f)), hc < 19950.0f, "HC");
+    tegnHandtak (g);
 
-    auto topp = alt.reduced (14, 10).removeFromTop (22).withTrimmedLeft (150);
+    auto topp = alt.reduced (14, 10).removeFromTop (22).withTrimmedLeft (236);
     g.setColour (farge::tekst);
     g.setFont (FontOptions (13.0f, Font::bold));
-    g.drawText ("Reverb EQ + RTA" + prikk + "EQ applies to the wet signal only", topp, Justification::centredLeft);
+    g.drawText ("Reverb EQ + RTA" + prikk + "drag the points", topp, Justification::centredLeft);
 
     g.setFont (FontOptions (11.0f));
     auto forkl = topp.removeFromRight (230);
@@ -392,20 +611,128 @@ void KlangVisning::tegnEq (Graphics& g, Rectangle<float> plott)
     merke ("EQ", farge::lys, 2.2f, 60);
 }
 
-void KlangVisning::tegnRta (Graphics& g, Rectangle<float> plott)
+void KlangVisning::tegnDyn (Graphics& g, Rectangle<float> plott)
 {
-    // RTA i dBFS med 3 dB/okt tilt (rundt 1 kHz), så musikk ser omtrent flatt ut.
-    const float rtaMin = -90.0f, rtaMaks = 0.0f;
-    const double fMin = 20.0, fMaks = 20000.0;
+    const auto alt = getLocalBounds().toFloat();
+    tegnFrekvensRutenett (g, plott);
+    // Uten tilt her, så terskelen kan leses mot dBFS-skalaen til høyre.
+    tegnRta (g, plott, spFoerDyn, spVaat, false);
+
+    const double fs = proc.hentRate();
+    const int punkter = 300;
+    auto lagKurve = [&] (auto&& dbVed)
+    {
+        Path pth;
+        for (int i = 0; i <= punkter; ++i)
+        {
+            const double f = fMin * std::pow (fMaks / fMin, (double) i / punkter);
+            const Point<float> pt (fx (f), eqY (dbVed (f)));
+            if (i == 0) pth.startNewSubPath (pt); else pth.lineTo (pt);
+        }
+        return pth;
+    };
+
+    for (int b = 0; b < FiolinProcessor::antallDyn; ++b)
+    {
+        const auto c = b == 0 ? farge::aksent : farge::bass;
+        const float f0 = v (FiolinProcessor::dynId (b, "freq")), q = v (FiolinProcessor::dynId (b, "q"));
+        const float range = v (FiolinProcessor::dynId (b, "range"));
+        const float terskel = v (FiolinProcessor::dynId (b, "thresh"));
+        const bool aktiv = range > 0.05f;
+
+        // Terskel: stiplet strek over båndbredden, og detektornivået som en
+        // tykk strek (lyser opp når nivået er over terskelen).
+        const float bw = jlimit (0.15f, 3.0f, 1.0f / q);
+        const float x0 = fx (f0 * std::pow (2.0f, -bw * 0.5f)), x1 = fx (f0 * std::pow (2.0f, bw * 0.5f));
+        Path strek, stiplet;
+        strek.startNewSubPath (x0, rtaY (terskel));
+        strek.lineTo (x1, rtaY (terskel));
+        const float monster[] = { 4.0f, 3.0f };
+        PathStrokeType (1.3f).createDashedStroke (stiplet, strek, monster, 2);
+        g.setColour (c.withAlpha (aktiv ? 0.9f : 0.35f));
+        g.fillPath (stiplet);
+        if (aktiv)
+        {
+            const float nivaa = proc.hentDynNivaa (b);
+            if (nivaa > rtaMin)
+            {
+                g.setColour ((nivaa > terskel ? farge::lys : c).withAlpha (0.7f));
+                g.fillRect (Rectangle<float> (x0, rtaY (nivaa) - 1.5f, x1 - x0, 3.0f));
+            }
+            // Maks demping (Range) som stiplet kurve.
+            Path maks, maksStiplet;
+            maks = lagKurve ([&] (double f) { return FiolinProcessor::toppRespons (f, f0, q, -range, fs); });
+            PathStrokeType (1.2f).createDashedStroke (maksStiplet, maks, monster, 2);
+            g.setColour (c.withAlpha (0.55f));
+            g.fillPath (maksStiplet);
+        }
+    }
+
+    // Samlet demping akkurat nå (begge båndene), fylt.
+    float gr[FiolinProcessor::antallDyn];
+    for (int b = 0; b < FiolinProcessor::antallDyn; ++b) gr[b] = proc.hentDynGr (b);
+    auto naa = lagKurve ([&] (double f)
+    {
+        float db = 0.0f;
+        for (int b = 0; b < FiolinProcessor::antallDyn; ++b)
+            db += FiolinProcessor::toppRespons (f, v (FiolinProcessor::dynId (b, "freq")), v (FiolinProcessor::dynId (b, "q")), gr[b], fs);
+        return db;
+    });
+    Path fyll (naa);
+    fyll.lineTo (plott.getRight(), eqY (0.0f));
+    fyll.lineTo (plott.getX(), eqY (0.0f));
+    fyll.closeSubPath();
+    g.setColour (farge::lys.withAlpha (0.22f));
+    g.fillPath (fyll);
+    g.setColour (farge::lys);
+    g.strokePath (naa, PathStrokeType (2.0f, PathStrokeType::curved, PathStrokeType::rounded));
+
+    tegnHandtak (g);
+
+    // Demping i dB ved hvert bånd
+    g.setFont (FontOptions (11.0f, Font::bold));
+    for (int b = 0; b < FiolinProcessor::antallDyn; ++b)
+        if (v (FiolinProcessor::dynId (b, "range")) > 0.05f)
+        {
+            const float x = fx (v (FiolinProcessor::dynId (b, "freq")));
+            const float y = eqY (-v (FiolinProcessor::dynId (b, "range"))) + 9.0f;
+            g.setColour (farge::panel.withAlpha (0.8f));
+            g.fillRoundedRectangle (Rectangle<float> (x - 24, y, 48, 15), 4.0f);
+            g.setColour (farge::tekst);
+            g.drawText (tall (gr[b], 1) + " dB", Rectangle<float> (x - 24, y, 48, 15), Justification::centred);
+        }
+
+    auto topp = alt.reduced (14, 10).removeFromTop (22).withTrimmedLeft (236);
+    g.setColour (farge::tekst);
+    g.setFont (FontOptions (13.0f, Font::bold));
+    g.drawText ("Dynamic EQ + RTA" + prikk + "cuts only above Thresh", topp, Justification::centredLeft);
+
+    g.setFont (FontOptions (11.0f));
+    auto forkl = topp.removeFromRight (250);
+    auto merke = [&] (const String& txt, Colour c, float tykk, int b)
+    {
+        auto felt = forkl.removeFromLeft ((float) b);
+        g.setColour (c);
+        g.drawLine (felt.getX(), felt.getCentreY(), felt.getX() + 14, felt.getCentreY(), tykk);
+        g.setColour (farge::dempet);
+        g.drawText (txt, felt.withTrimmedLeft (18), Justification::centredLeft);
+    };
+    merke ("Before", farge::diskant.withAlpha (0.6f), 1.2f, 76);
+    merke ("After", farge::aksent.withAlpha (0.6f), 5.0f, 70);
+    merke ("Gain", farge::lys, 2.0f, 60);
+}
+
+void KlangVisning::tegnRta (Graphics& g, Rectangle<float> plott, const Spektrum& linje,
+                            const Spektrum& fyllSp, bool medTilt)
+{
+    // RTA i dBFS. Med tilt: 3 dB/okt rundt 1 kHz, så musikk ser omtrent flatt ut.
     const double nyq = proc.hentRate() * 0.5;
-    auto fx = [&] (double f) { return plott.getX() + (float) (std::log (f / fMin) / std::log (fMaks / fMin)) * plott.getWidth(); };
-    auto ry = [&] (float db) { return plott.getY() + (rtaMaks - jlimit (rtaMin, rtaMaks, db)) / (rtaMaks - rtaMin) * plott.getHeight(); };
-    auto tilt = [] (double f) { return (float) (3.0 * std::log2 (f / 1000.0)); };
+    auto tilt = [medTilt] (double f) { return medTilt ? (float) (3.0 * std::log2 (f / 1000.0)) : 0.0f; };
 
     g.setFont (FontOptions (10.5f));
     g.setColour (farge::dempet.withAlpha (0.8f));
     for (int db = 0; db >= -90; db -= 30)
-        g.drawText (String (db), Rectangle<float> (plott.getRight() + 4, ry ((float) db) - 7, 40, 14),
+        g.drawText (String (db), Rectangle<float> (plott.getRight() + 4, rtaY ((float) db) - 7, 40, 14),
                     Justification::centredLeft);
 
     auto lagKurve = [&] (const Spektrum& sp)
@@ -417,13 +744,13 @@ void KlangVisning::tegnRta (Graphics& g, Rectangle<float> plott)
         {
             const double f = fMin * std::pow (fMaks / fMin, (double) i / punkter);
             if (f >= nyq) break;
-            const Point<float> pt (fx (f), ry (sp.db (f) + tilt (f)));
+            const Point<float> pt (fx (f), rtaY (sp.db (f) + tilt (f)));
             if (start) { pth.startNewSubPath (pt); start = false; } else pth.lineTo (pt);
         }
         return pth;
     };
 
-    auto vaat = lagKurve (spVaat);
+    auto vaat = lagKurve (fyllSp);
     Path fyll (vaat);
     fyll.lineTo (fyll.getCurrentPosition().x, plott.getBottom());
     fyll.lineTo (plott.getX(), plott.getBottom());
@@ -435,7 +762,7 @@ void KlangVisning::tegnRta (Graphics& g, Rectangle<float> plott)
     g.strokePath (vaat, PathStrokeType (1.2f));
 
     g.setColour (farge::diskant.withAlpha (0.55f));
-    g.strokePath (lagKurve (spInn), PathStrokeType (1.2f));
+    g.strokePath (lagKurve (linje), PathStrokeType (1.2f));
 }
 
 //==============================================================================
@@ -449,7 +776,9 @@ FiolinEditor::FiolinEditor (FiolinProcessor& p)
     visning.setTooltip ("DECAY: how the reverb dies away in the low, mid and high range. "
                         "Vertical lines are early reflections, the dotted line is the pre-delay.\n"
                         "EQ: real-time analyser (RTA) of the input (silver line) and the reverb after EQ (blue), "
-                        "with the EQ curve on top. The RTA uses a 3 dB/oct tilt; scale on the right in dBFS.");
+                        "with the EQ curve on top. Drag LC/LS/HS/HC to change the EQ. The RTA uses a 3 dB/oct tilt; scale on the right in dBFS.\n"
+                        "DYN EQ: the reverb before (silver) and after (blue) the dynamic EQ. Drag the circles (1, 2) to set "
+                        "frequency and threshold, the triangles to set range. Mouse wheel = Q. Double-click = reset.");
 
     const auto navn = FiolinProcessor::romNavn();
     const String hjelp[] = {
@@ -466,13 +795,15 @@ FiolinEditor::FiolinEditor (FiolinProcessor& p)
         innhold.addAndMakeVisible (b);
     }
 
-    const char* fanenavn[] = { "DECAY", "EQ" };
-    for (int i = 0; i < 2; ++i)
+    const char* fanenavn[] = { "DECAY", "EQ", "DYN EQ" };
+    const KlangVisning::Modus fanemodus[] = { KlangVisning::Modus::decay, KlangVisning::Modus::eq, KlangVisning::Modus::dyn };
+    for (int i = 0; i < 3; ++i)
     {
         auto& b = faner[(size_t) i];
         b.setButtonText (fanenavn[i]);
-        b.setConnectedEdges (i == 0 ? Button::ConnectedOnRight : Button::ConnectedOnLeft);
-        b.onClick = [this, i] { velgVisning (i == 0 ? KlangVisning::Modus::decay : KlangVisning::Modus::eq); };
+        b.setConnectedEdges ((i > 0 ? Button::ConnectedOnLeft : 0) | (i < 2 ? Button::ConnectedOnRight : 0));
+        const auto m = fanemodus[i];
+        b.onClick = [this, m] { velgVisning (m); };
         innhold.addAndMakeVisible (b);
     }
 
@@ -500,6 +831,20 @@ FiolinEditor::FiolinEditor (FiolinProcessor& p)
               "Stereo width of the reverb. 0 % = mono, 100 % = as designed, 150 % = extra wide.", M::decay);
     lagKnott (mix, "mix", "Mix",
               "Dry/wet balance. Up to 50 % the dry signal stays at full level. On an aux/send: set to 100 %.", M::decay);
+
+    for (int b = 0; b < FiolinProcessor::antallDyn; ++b)
+    {
+        const String n (b + 1);
+        lagKnott (dynFreq[(size_t) b], FiolinProcessor::dynId (b, "freq"), "Freq " + n,
+                  "Centre frequency of dynamic band " + n + ".", M::dyn);
+        lagKnott (dynQ[(size_t) b], FiolinProcessor::dynId (b, "q"), "Q " + n,
+                  "Bandwidth of dynamic band " + n + ". Higher Q = narrower band.", M::dyn);
+        lagKnott (dynThr[(size_t) b], FiolinProcessor::dynId (b, "thresh"), "Thresh " + n,
+                  "Level (dBFS, RMS in the band) where band " + n + " starts to cut. "
+                  "Only the parts of the reverb that get louder than this are turned down.", M::dyn);
+        lagKnott (dynRange[(size_t) b], FiolinProcessor::dynId (b, "range"), "Range " + n,
+                  "Maximum cut of band " + n + " (0 = off). Ratio 3:1, attack 8 ms, release 150 ms.", M::dyn);
+    }
 
     setResizable (true, true);
     setResizeLimits (basisBredde * 3 / 4, basisHoyde * 3 / 4, basisBredde * 2, basisHoyde * 2);
@@ -551,9 +896,28 @@ void FiolinEditor::velgRom (int rom)
 
 void FiolinEditor::velgVisning (KlangVisning::Modus m)
 {
+    using M = KlangVisning::Modus;
     visning.settModus (m);
-    faner[0].setToggleState (m == KlangVisning::Modus::decay, dontSendNotification);
-    faner[1].setToggleState (m == KlangVisning::Modus::eq, dontSendNotification);
+    faner[0].setToggleState (m == M::decay, dontSendNotification);
+    faner[1].setToggleState (m == M::eq, dontSendNotification);
+    faner[2].setToggleState (m == M::dyn, dontSendNotification);
+    if ((int) m == visteModus)
+        return;
+    visteModus = (int) m;
+    // EQ-gruppen viser enten den faste EQ-en eller den dynamiske.
+    const bool dynVis = m == M::dyn;
+    for (auto* k : { &lavkutt, &loFreq, &loGain, &hoykutt, &hiFreq, &hiGain })
+    {
+        k->slider.setVisible (! dynVis);
+        k->navn.setVisible (! dynVis);
+    }
+    for (int b = 0; b < FiolinProcessor::antallDyn; ++b)
+        for (auto* k : { &dynFreq[(size_t) b], &dynQ[(size_t) b], &dynThr[(size_t) b], &dynRange[(size_t) b] })
+        {
+            k->slider.setVisible (dynVis);
+            k->navn.setVisible (dynVis);
+        }
+    innhold.repaint();
 }
 
 void FiolinEditor::timerCallback()
@@ -617,13 +981,14 @@ void FiolinEditor::Innhold::paint (Graphics& g)
         g.drawRoundedRectangle (r.reduced (0.5f), 10.0f, 1.0f);
         g.setColour (farge::aksent);
         g.setFont (FontOptions (11.0f, Font::bold).withKerningFactor (0.15f));
-        g.drawText (gr.navn, r.reduced (14, 8).removeFromTop (14), Justification::centredLeft);
+        const bool dynVis = ed.visning.hentModus() == KlangVisning::Modus::dyn;
+        g.drawText (&gr == &grupper[1] && dynVis ? "DYNAMIC EQ" : gr.navn,
+                    r.reduced (14, 8).removeFromTop (14), Justification::centredLeft);
     }
     // skillelinje mellom EQ-radene
     g.setColour (farge::linje.withAlpha (0.6f));
     const int midtY = gruppeY + 26 + (getHeight() - gruppeY - 18 - 26) / 2;
     g.drawHorizontalLine (midtY, (float) grupper[1].x + 14, (float) (grupper[1].x + grupper[1].b - 14));
-    ignoreUnused (ed);
 }
 
 void FiolinEditor::Innhold::resized()
@@ -634,9 +999,10 @@ void FiolinEditor::Innhold::resized()
         b.setBounds (rom.removeFromLeft (140));
 
     e.visning.setBounds (24, visY, getWidth() - 48, visH);
-    auto fane = Rectangle<int> (24 + 12, visY + 10, 120, 24);
-    for (auto& b : e.faner)
-        b.setBounds (fane.removeFromLeft (60));
+    auto fane = Rectangle<int> (24 + 12, visY + 10, 200, 24);
+    e.faner[0].setBounds (fane.removeFromLeft (64));
+    e.faner[1].setBounds (fane.removeFromLeft (52));
+    e.faner[2].setBounds (fane.removeFromLeft (76));
 
     const int y = gruppeY + 26, h = getHeight() - y - 26;
 
@@ -657,6 +1023,18 @@ void FiolinEditor::Innhold::resized()
     e.plasser (e.hoykutt, rad2.removeFromLeft (kb), 54);
     e.plasser (e.hiFreq,  rad2.removeFromLeft (kb), 54);
     e.plasser (e.hiGain,  rad2, 54);
+
+    // DYNAMIC EQ (samme plass): én rad per bånd, FREQ / Q / THRESH / RANGE
+    auto dq = Rectangle<int> (grupper[1].x + 6, y, grupper[1].b - 12, h);
+    for (int b = 0; b < FiolinProcessor::antallDyn; ++b)
+    {
+        auto rad = b == 0 ? dq.removeFromTop (dq.getHeight() / 2) : dq;
+        const int kb4 = rad.getWidth() / 4;
+        e.plasser (e.dynFreq[(size_t) b],  rad.removeFromLeft (kb4), 50);
+        e.plasser (e.dynQ[(size_t) b],     rad.removeFromLeft (kb4), 50);
+        e.plasser (e.dynThr[(size_t) b],   rad.removeFromLeft (kb4), 50);
+        e.plasser (e.dynRange[(size_t) b], rad, 50);
+    }
 
     // OUTPUT: Mix stor øverst, Width under
     auto ut = Rectangle<int> (grupper[2].x + 6, y, grupper[2].b - 12, h);
