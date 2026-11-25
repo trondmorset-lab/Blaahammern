@@ -388,6 +388,43 @@ int main (int argc, char** argv)
             for (int ch = 0; ch < 2; ++ch) mod2.copyFrom (ch, pos, bb, ch, 0, len);
         }
         sjekk (korr (mod1, mod2, 48000, 96000) < 0.95, "modulasjon: halen er tidsvarierende", korr (mod1, mod2, 48000, 96000));
+        // Ingen tonehøydemodulasjon (som gir chorus/phaser): en ren tone
+        // gjennom halen skal forbli ren, og energien ligge innen ±10 Hz.
+        {
+            FiolinProcessor pv;
+            sett (pv, "mix", 100.0f); sett (pv, "dyn1_range", 0.0f); sett (pv, "lengde_s", 2.0f);
+            sett (pv, "mod_depth", 100.0f); sett (pv, "mod_rate", 1.0f);
+            pv.prepareToPlay (48000.0, 512);
+            MidiBuffer m2;
+            AudioBuffer<float> bb (2, 512);
+            for (int i = 0; i < 40; ++i) { bb.clear(); pv.processBlock (bb, m2); Thread::sleep (10); }
+            constexpr int ordn = 16, N = 1 << ordn;
+            std::vector<float> opptak ((size_t) (2 * N), 0.0f);
+            int fase = 0, skrevet = 0;
+            while (skrevet < N)
+            {
+                for (int i = 0; i < 512; ++i)
+                {
+                    const float v = 0.3f * std::sin (MathConstants<float>::twoPi * 3000.0f * (float) (fase++) / 48000.0f);
+                    bb.setSample (0, i, v); bb.setSample (1, i, v);
+                }
+                pv.processBlock (bb, m2);
+                if (fase > 48000 * 3)
+                    for (int i = 0; i < 512 && skrevet < N; ++i, ++skrevet)
+                        opptak[(size_t) skrevet] = bb.getSample (0, i)
+                            * (0.5f - 0.5f * std::cos (MathConstants<float>::twoPi * (float) skrevet / (float) N));
+            }
+            dsp::FFT fft (ordn);
+            fft.performFrequencyOnlyForwardTransform (opptak.data());
+            double inne = 0, alt = 0;
+            for (int k = 1; k < N / 2; ++k)
+            {
+                const double e = (double) opptak[(size_t) k] * opptak[(size_t) k];
+                alt += e;
+                if (std::abs (k * 48000.0 / N - 3000.0) <= 10.0) inne += e;
+            }
+            sjekk (inne / alt > 0.995, "modulasjon: ingen tonehøydeendring (andel innen ±10 Hz)", inne / alt);
+        }
         sjekk (pm.parametre.getParameter ("mod_rate")->getCurrentValueAsText() == "0.30 Hz", "mod rate vises som «0.30 Hz»");
         // Mix-kurven
         auto [t25, v25] = FiolinProcessor::mixGain (25.0f);
@@ -397,6 +434,25 @@ int main (int argc, char** argv)
         const float db25 = Decibels::gainToDecibels (v25);
         sjekk (db25 < -9.0f && db25 > -11.5f, "mix 25 %: klang ca. -10 dB", db25);
         sjekk (FiolinProcessor::mixGain (0.0f).second == 0.0f, "mix 0 %: ingen klang");
+    }
+
+    // 6f. CPU: 10 s lyd skal behandles mye raskere enn sanntid.
+    {
+        FiolinProcessor pc;
+        sett (pc, "lengde_s", 4.0f);
+        pc.prepareToPlay (48000.0, 512);
+        Thread::sleep (500);
+        MidiBuffer m3;
+        AudioBuffer<float> bb (2, 512);
+        Random rr (1);
+        const auto t0 = Time::getMillisecondCounterHiRes();
+        for (int k = 0; k < 48000 * 10 / 512; ++k)
+        {
+            for (int i = 0; i < 512; ++i) { bb.setSample (0, i, rr.nextFloat() - 0.5f); bb.setSample (1, i, rr.nextFloat() - 0.5f); }
+            pc.processBlock (bb, m3);
+        }
+        const double ms = Time::getMillisecondCounterHiRes() - t0;
+        sjekk (ms < 10000.0 * 0.15, "CPU: % av sanntid (4 s klang)", ms / 100.0);
     }
 
     // 7. Lagring/gjenoppretting av tilstand.

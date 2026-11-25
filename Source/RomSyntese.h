@@ -39,8 +39,10 @@ namespace romsyntese
 
     // Stereo-IR ved samplerate fs. rt = RT60 i mellomtonen (s).
     // diffusion 0..1: 0 = glisne, hørbare ekko, 1 = helt tett og glatt.
+    // variant > 0 gir samme rom med uavhengig støy i halen (ukorrelert hale,
+    // brukes av modulasjonen).
     juce::AudioBuffer<float> lagIR (const RomOppsett&, double rt, double predelay,
-                                   float tidligeDb, double diffusion, double fs);
+                                   float tidligeDb, double diffusion, double fs, int variant = 0);
 
     // Lengde på IR-en (s) for gitt RT og predelay.
     double irLengde (double rt, double predelay);

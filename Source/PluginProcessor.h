@@ -115,9 +115,12 @@ private:
     // IR-en deles i to: starten (tidlige refleksjoner, umodulert) og halen,
     // som går gjennom modulasjonen.
     juce::dsp::Convolution konvTidlig { juce::dsp::Convolution::NonUniform { 512 } };
-    juce::dsp::Convolution konvHale { juce::dsp::Convolution::NonUniform { 512 } };
+    std::array<juce::dsp::Convolution, Modulasjon::antall> konvHale {
+        juce::dsp::Convolution { juce::dsp::Convolution::NonUniform { 512 } },
+        juce::dsp::Convolution { juce::dsp::Convolution::NonUniform { 512 } },
+        juce::dsp::Convolution { juce::dsp::Convolution::NonUniform { 512 } } };
     Modulasjon modulasjon;
-    juce::AudioBuffer<float> haleBuf;
+    std::array<juce::AudioBuffer<float>, Modulasjon::antall> haleBuf;
     std::atomic<float>* pModDybde = nullptr;
     std::atomic<float>* pModRate = nullptr;
     juce::SmoothedValue<float> torrGain, vaatGain;

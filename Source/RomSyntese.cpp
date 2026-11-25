@@ -112,7 +112,7 @@ double irLengde (double rt, double predelay)
 }
 
 AudioBuffer<float> lagIR (const RomOppsett& r, double rt, double predelay, float tidligeDb,
-                         double diffusion, double fs)
+                         double diffusion, double fs, int variant)
 {
     const double d = jlimit (0.0, 1.0, diffusion);
     const int n = (int) (irLengde (rt, predelay) * fs);
@@ -130,7 +130,7 @@ AudioBuffer<float> lagIR (const RomOppsett& r, double rt, double predelay, float
     {
         // Uavhengig, fast støy per kanal og rom: dekorrelert stereo, og
         // samme "rom" uansett lengde.
-        Random rng (r.seed * 7919 + ch * 104729 + 1);
+        Random rng (r.seed * 7919 + ch * 104729 + 1 + variant * 1000003);
         std::vector<float> stoy ((size_t) n);
         for (auto& s : stoy)
         {

@@ -820,11 +820,11 @@ FiolinEditor::FiolinEditor (FiolinProcessor& p)
               "Level of the early reflections, the first echoes from walls and ceiling. "
               "More gives presence and a sense of space, less gives a smoother tail.", M::decay);
     lagKnott (modDybde, "mod_depth", "Mod Depth",
-              "How much the reverb tail is modulated (slow, subtle pitch movement like in algorithmic halls). "
-              "Makes the tail livelier, wider and less static. 0 % = static. Strings: 15-35 %.", M::decay);
+              "How much the reverb tail moves: it glides slowly between three uncorrelated versions of the same room, "
+              "like air moving in a hall. Livelier and less static, with no pitch change, chorus or phasing. 0 % = static.", M::decay);
     lagKnott (modRate, "mod_rate", "Mod Rate",
-              "Speed of the modulation (each voice moves at its own, uneven rate). 0.2-0.5 Hz sounds natural; "
-              "faster gives more chorus.", M::decay);
+              "Speed of the movement (left and right move at their own, uneven rates). 0.2-0.5 Hz sounds natural; "
+              "faster gives a more restless tail.", M::decay);
     lagKnott (lavkutt, "lavkutt", "Low Cut",
               "High-pass filter on the reverb (12 dB/oct). Keeps the low end clean. Off = 20 Hz.", M::eq);
     lagKnott (loFreq, "loshelf_freq", "Lo Freq", "Corner frequency of the low shelf.", M::eq);

@@ -3,101 +3,76 @@
 #include <juce_core/juce_core.h>
 #include <array>
 #include <cmath>
-#include <vector>
 
-// Modulasjon av klanghalen: to svakt modulerte forsinkelser per kanal
-// (vibrato/chorus som i algoritmiske haller). Hver tapp har egen, ujevn LFO
-// (to sinuser med ulike rater), og venstre og høyre er forskjellige. Halen
-// blir dermed levende og bredere i stedet for statisk.
+// Modulasjon av klanghalen uten tonehøydeendring og uten «phaser».
 //
-// Basisforsinkelsen (basis) er alltid med, også ved dybde 0. Prosessoren
-// trekker den fra i IR-en, så den totale tiden stemmer.
-// Lydtråden: ingen allokering etter prepare(), ingen låser.
+// Halen finnes i tre varianter: samme rom, samme klangtid og spektrum, men
+// med uavhengig støy (ukorrelerte). Modulasjonen glir sakte mellom dem med
+// konstant effekt (sum av gain² = 1). Fordi variantene er ukorrelerte, flytter
+// mønsteret av topper og daler seg tilfeldig over frekvensene, slik det gjør i
+// en sal med luftbevegelse, i stedet for et jevnt kamfilter som sveiper (som
+// forsinkelsesmodulasjon gir). Ved dybde 0 brukes bare variant 0, som er
+// nøyaktig den syntetiske IR-en.
+//
+// Venstre og høyre har egne LFO-er (ujevne: to sinuser med ulike rater).
+// Lydtråden: ingen allokering, ingen låser.
 class Modulasjon
 {
 public:
-    static constexpr double basis = 0.005;     // s
-    static constexpr double maksDybde = 0.0010; // s ved 100 %
+    static constexpr int antall = 3;
 
     void prepare (double sampleRate)
     {
         fs = sampleRate;
-        const int trengs = (int) std::ceil ((basis + maksDybde) * fs) + 8;
-        int storrelse = 1;
-        while (storrelse < trengs) storrelse <<= 1;
-        maske = storrelse - 1;
-        for (auto& b : buf) b.assign ((size_t) storrelse, 0.0f);
-        skriv = 0;
-        for (int ch = 0; ch < 2; ++ch)
-            for (int t = 0; t < 2; ++t)
-                fase[(size_t) ch][(size_t) t] = startFase[ch][t];
+        fase = startFase();
         dybde.reset (fs, 0.1);
         dybde.setCurrentAndTargetValue (0.0f);
     }
 
-    int basisSamples() const { return (int) std::round (basis * fs); }
-
-    // dybde01 0..1, rateHz = LFO-grunnrate.
-    void process (float* l, float* r, int n, float dybde01, float rateHz) noexcept
+    // Legger sum_k g_k * hale[k] til ut (per kanal). dybde01 0..1.
+    void bland (const std::array<const float*, antall>& haleL, const std::array<const float*, antall>& haleR,
+                float* utL, float* utR, int n, float dybde01, float rateHz) noexcept
     {
         dybde.setTargetValue (juce::jlimit (0.0f, 1.0f, dybde01));
-        const double basisS = (double) basisSamples(); // samme avrunding som i IR-en
-        const double dybdeS = maksDybde * fs;
         const double tau = juce::MathConstants<double>::twoPi;
-        std::array<double, 4> steg;
-        for (int ch = 0; ch < 2; ++ch)
-            for (int t = 0; t < 2; ++t)
-                steg[(size_t) (ch * 2 + t)] = tau * rateHz * rateFaktor[ch][t] / fs;
-
+        const double grunn = tau * rateHz / fs;
+        static constexpr double rateFaktor[2][2][2] = { { { 1.0, 2.37 }, { 0.71, 1.93 } },
+                                                        { { 0.89, 2.11 }, { 0.63, 1.71 } } };
         for (int i = 0; i < n; ++i)
         {
-            const float dy = dybde.getNextValue();
-            const double d = dy * dybdeS;
-            // To tapper i ulik fase summeres ikke lenger i fase når dybden
-            // øker; løft nivået litt så halen er like sterk.
-            const float g = 0.5f * (1.0f + 0.38f * dy);
-            float* x[2] = { l, r };
+            const float d = dybde.getNextValue();
             for (int ch = 0; ch < 2; ++ch)
             {
-                auto& b = buf[(size_t) ch];
-                b[(size_t) (skriv & maske)] = x[ch][i];
-                float sum = 0.0f;
-                for (int t = 0; t < 2; ++t)
+                // Variant 1 og 2 får hver sin ujevne LFO (±1).
+                float u[2];
+                for (int v = 0; v < 2; ++v)
                 {
-                    double& f = fase[(size_t) ch][(size_t) t];
-                    const double lfo = (std::sin (f) + 0.3 * std::sin (1.93 * f + 1.3 * (ch + 2 * t))) / 1.3;
-                    f += steg[(size_t) (ch * 2 + t)];
-                    if (f > tau * 100.0) f -= tau * 100.0;
-                    sum += les (b, (double) skriv - (basisS + d * lfo));
+                    auto& f = fase[(size_t) ch][(size_t) v];
+                    u[v] = (float) ((std::sin (f[0]) + 0.5 * std::sin (f[1])) / 1.5);
+                    f[0] += grunn * rateFaktor[ch][v][0];
+                    f[1] += grunn * rateFaktor[ch][v][1];
+                    for (auto& x : f) if (x > tau * 1000.0) x -= tau * 1000.0;
                 }
-                x[ch][i] = g * sum;
+                const float g1 = d * u[0], g2 = d * u[1];
+                const float norm = 1.0f / std::sqrt (1.0f + g1 * g1 + g2 * g2);
+                const auto& h = ch == 0 ? haleL : haleR;
+                float* ut = ch == 0 ? utL : utR;
+                ut[i] += norm * (h[0][i] + g1 * h[1][i] + g2 * h[2][i]);
             }
-            ++skriv;
         }
-        skriv &= maske;
     }
 
 private:
-    // 4-punkts Hermite-interpolasjon (taper lite diskant ved modulasjon).
-    float les (const std::vector<float>& b, double pos) const noexcept
+    using Faser = std::array<std::array<std::array<double, 2>, 2>, 2>; // [kanal][variant][sinus]
+    static Faser startFase()
     {
-        const double gulv = std::floor (pos);
-        const int i = (int) gulv;
-        const float fr = (float) (pos - gulv);
-        const float y0 = b[(size_t) ((i - 1) & maske)], y1 = b[(size_t) (i & maske)];
-        const float y2 = b[(size_t) ((i + 1) & maske)], y3 = b[(size_t) ((i + 2) & maske)];
-        const float c1 = 0.5f * (y2 - y0);
-        const float c2 = y0 - 2.5f * y1 + 2.0f * y2 - 0.5f * y3;
-        const float c3 = 0.5f * (y3 - y0) + 1.5f * (y1 - y2);
-        return ((c3 * fr + c2) * fr + c1) * fr + y1;
+        Faser f;
+        f[0][0] = { 0.0, 1.1 }; f[0][1] = { 2.0, 0.4 };
+        f[1][0] = { 1.3, 2.9 }; f[1][1] = { 3.7, 5.1 };
+        return f;
     }
 
-    static constexpr double rateFaktor[2][2] = { { 1.0, 1.31 }, { 0.87, 1.17 } };
-    static constexpr double startFase[2][2]  = { { 0.0, 2.1 }, { 1.0, 3.4 } };
-
     double fs = 48000.0;
-    std::array<std::vector<float>, 2> buf;
-    int maske = 0, skriv = 0;
-    std::array<std::array<double, 2>, 2> fase {};
+    Faser fase = startFase();
     juce::SmoothedValue<float> dybde;
 };
