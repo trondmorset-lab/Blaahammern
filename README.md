@@ -38,7 +38,7 @@ The level follows the length as in a real room: a longer reverb gives more rever
 | **Lo Freq / Lo Gain** | Low shelf on the reverb, 50–1000 Hz, ±12 dB. |
 | **High Cut** (2 kHz–Off) | 12 dB/oct low-pass on the reverb. A lower value sounds softer and further away. |
 | **Hi Freq / Hi Gain** | High shelf on the reverb, 1–16 kHz, ±12 dB. A small cut (−2 to −4 dB) tames bow noise in the tail. |
-| **Dynamic EQ: Freq / Q / Thresh / Range** (two bands) | Peaking filters on the reverb that only attenuate when the level in the band exceeds Thresh (RMS in dBFS). Range is the maximum attenuation (0 = off). 3:1, attack 8 ms, release 150 ms. Band 1: 950 Hz, −3 dB. Band 2 is off by default. |
+| **Dynamic EQ: Freq / Q / Thresh / Range / ABOVE–BELOW** (two bands) | Peaking filters on the reverb that only attenuate when the level in the band rises above Thresh (ABOVE, default) or falls below it (BELOW), measured as RMS in dBFS. Range is the maximum attenuation (0 = off). 3:1, attack 8 ms, release 150 ms. Band 1: 950 Hz, −3 dB. Band 2 is off by default. |
 | **Mix** (0–100 %) | Dry/wet. Up to 50 % the dry signal stays at full level, above that it is faded down. The reverb rises along a curve, so low settings stay dry: 25 % = −10 dB, 50 % = full reverb. On an aux/send: 100 %. |
 | **Width** (0–150 %) | Stereo width of the reverb. 0 % = mono, 100 % = as the room, 150 % = extra wide. |
 
@@ -81,7 +81,7 @@ Without Xcode (Command Line Tools only), `cmake -B build -G "Unix Makefiles" -DC
 - **Modulation:** that 0 % gives exactly the synthetic IR, that 100 % makes the tail change over time without changing the early reflections, level or RT, and that a pure tone stays pure (no pitch modulation).
 - **CPU:** that 10 s of audio with a 4 s reverb is processed well within real time.
 - **Midrange:** that 700–1200 Hz in the tail sits 1.5–4.5 dB below the neighbouring ranges.
-- **Dynamic EQ:** that a strong tone in the band is attenuated by Range, that weak signals and tones outside the band are unchanged, and that the attenuation is reported to the display.
+- **Dynamic EQ:** that a strong tone in the band is attenuated by Range, that weak signals and tones outside the band are unchanged, that BELOW attenuates weak signals and leaves strong ones alone, and that the attenuation is reported to the display.
 - **Drag handles:** that LS, HC, threshold and Range change correctly when the handles are moved.
 - **RTA:** correct level in dBFS, no leakage, and a full queue without crashing.
 - **Other:** 44.1 and 48 kHz, mix 0 = unchanged dry signal, saving and restoring state, and that the IR is swapped in the background.

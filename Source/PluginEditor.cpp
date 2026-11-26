@@ -657,7 +657,8 @@ void KlangVisning::tegnDyn (Graphics& g, Rectangle<float> plott)
             const float nivaa = proc.hentDynNivaa (b);
             if (nivaa > rtaMin)
             {
-                g.setColour ((nivaa > terskel ? farge::lys : c).withAlpha (0.7f));
+                const bool kutter = v (FiolinProcessor::dynId (b, "mode")) > 0.5f ? nivaa < terskel : nivaa > terskel;
+                g.setColour ((kutter ? farge::lys : c).withAlpha (0.7f));
                 g.fillRect (Rectangle<float> (x0, rtaY (nivaa) - 1.5f, x1 - x0, 3.0f));
             }
             // Maks demping (Range) som stiplet kurve.
@@ -706,7 +707,10 @@ void KlangVisning::tegnDyn (Graphics& g, Rectangle<float> plott)
     auto topp = alt.reduced (14, 10).removeFromTop (22).withTrimmedLeft (236);
     g.setColour (farge::tekst);
     g.setFont (FontOptions (13.0f, Font::bold));
-    g.drawText ("Dynamic EQ + RTA" + prikk + "cuts only above Thresh", topp, Justification::centredLeft);
+    const bool under1 = v (FiolinProcessor::dynId (0, "mode")) > 0.5f, under2 = v (FiolinProcessor::dynId (1, "mode")) > 0.5f;
+    g.drawText ("Dynamic EQ + RTA" + prikk + (under1 == under2 ? String (under1 ? "cuts below Thresh" : "cuts above Thresh")
+                                                               : "1 " + String (under1 ? "below" : "above") + ", 2 " + (under2 ? "below" : "above")),
+                topp, Justification::centredLeft);
 
     g.setFont (FontOptions (11.0f));
     auto forkl = topp.removeFromRight (250);
@@ -849,9 +853,16 @@ FiolinEditor::FiolinEditor (FiolinProcessor& p)
                   "Bandwidth of dynamic band " + n + ". Higher Q = narrower band.", M::dyn);
         lagKnott (dynThr[(size_t) b], FiolinProcessor::dynId (b, "thresh"), "Thresh " + n,
                   "Level (dBFS, RMS in the band) where band " + n + " starts to cut. "
-                  "Only the parts of the reverb that get louder than this are turned down.", M::dyn);
+                  "In ABOVE mode, the reverb is turned down only when it gets louder than this; "
+                  "in BELOW mode, only when it is quieter.", M::dyn);
         lagKnott (dynRange[(size_t) b], FiolinProcessor::dynId (b, "range"), "Range " + n,
                   "Maximum cut of band " + n + " (0 = off). Ratio 3:1, attack 8 ms, release 150 ms.", M::dyn);
+        auto& mb = dynModus[(size_t) b];
+        mb.setTooltip ("Band " + n + ": ABOVE cuts when the level in the band rises above Thresh "
+                       "(tames loud resonances). BELOW cuts when the level falls below Thresh "
+                       "(cleans up the quiet tail). Click to switch.");
+        mb.onClick = [this, b] { byttDynModus (b); };
+        innhold.addChildComponent (mb);
     }
 
     setResizable (true, true);
@@ -925,11 +936,31 @@ void FiolinEditor::velgVisning (KlangVisning::Modus m)
             k->slider.setVisible (dynVis);
             k->navn.setVisible (dynVis);
         }
+    for (auto& mb : dynModus)
+        mb.setVisible (dynVis);
     innhold.repaint();
+}
+
+void FiolinEditor::byttDynModus (int band)
+{
+    if (auto* p = prosessor.parametre.getParameter (FiolinProcessor::dynId (band, "mode")))
+    {
+        p->beginChangeGesture();
+        p->setValueNotifyingHost (p->getValue() > 0.5f ? 0.0f : 1.0f);
+        p->endChangeGesture();
+    }
+    velgVisning (KlangVisning::Modus::dyn);
+    timerCallback();
 }
 
 void FiolinEditor::timerCallback()
 {
+    for (int b = 0; b < FiolinProcessor::antallDyn; ++b)
+    {
+        const bool under = prosessor.parametre.getRawParameterValue (FiolinProcessor::dynId (b, "mode"))->load() > 0.5f;
+        dynModus[(size_t) b].setButtonText (String (b + 1) + (under ? String (" BELOW") : String (" ABOVE")));
+        dynModus[(size_t) b].setToggleState (under, dontSendNotification);
+    }
     const int rom = (int) prosessor.parametre.getRawParameterValue ("rom")->load();
     for (int i = 0; i < 3; ++i)
         romKnapper[(size_t) i].setToggleState (i == rom, dontSendNotification);
@@ -978,7 +1009,7 @@ void FiolinEditor::Innhold::paint (Graphics& g)
     navn.draw (g, Rectangle<float> (84, 12, 320, 36));
     g.setColour (farge::dempet);
     g.setFont (FontOptions (11.5f).withKerningFactor (0.12f));
-    g.drawText ("SYNTHETIC IR HALL" + prikk + "MORSET LABS", 86, 46, 360, 16, Justification::centredLeft);
+    g.drawText ("SYNTHETIC IR HALL" + prikk + "MORSET LABS" + prikk + "v" T1REVPRO_VERSION, 86, 46, 360, 16, Justification::centredLeft);
 
     for (const auto& gr : grupper)
     {
@@ -1051,6 +1082,10 @@ void FiolinEditor::Innhold::resized()
         e.plasser (e.dynThr[(size_t) b],   rad.removeFromLeft (kb4), 50);
         e.plasser (e.dynRange[(size_t) b], rad, 50);
     }
+    // Above/Below-brytere øverst til høyre i gruppen, ved tittelen
+    auto mr = Rectangle<int> (grupper[1].x + grupper[1].b - 14 - 2 * 74, gruppeY + 6, 2 * 74, 18);
+    for (auto& mb : e.dynModus)
+        mb.setBounds (mr.removeFromLeft (74).reduced (2, 0));
 
     // OUTPUT: Mix stor øverst, Width under
     auto ut = Rectangle<int> (grupper[2].x + 6, y, grupper[2].b - 12, h);

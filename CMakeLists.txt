@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(T1revPRO VERSION 1.9.0 LANGUAGES C CXX)
+project(T1revPRO VERSION 1.10.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -64,7 +64,8 @@ target_compile_definitions(T1revPRO PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0
-    JUCE_DISPLAY_SPLASH_SCREEN=0)
+    JUCE_DISPLAY_SPLASH_SCREEN=0
+    T1REVPRO_VERSION="${PROJECT_VERSION}")
 
 target_link_libraries(T1revPRO
     PRIVATE
@@ -85,7 +86,7 @@ if(T1REVPRO_BUILD_TESTS)
     target_sources(T1revPROTest PRIVATE Tests/T1revPROTest.cpp ${T1_KILDER})
     target_include_directories(T1revPROTest PRIVATE Source)
     target_compile_definitions(T1revPROTest PRIVATE
-        JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_DISPLAY_SPLASH_SCREEN=0 T1REVPRO_TEST=1)
+        JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_DISPLAY_SPLASH_SCREEN=0 T1REVPRO_TEST=1 T1REVPRO_VERSION="${PROJECT_VERSION}")
     target_link_libraries(T1revPROTest
         PRIVATE T1revPROAssets juce::juce_audio_utils juce::juce_dsp
         PUBLIC juce::juce_recommended_config_flags)

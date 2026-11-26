@@ -103,6 +103,8 @@ AudioProcessorValueTreeState::ParameterLayout FiolinProcessor::lagParametre()
         std::make_unique<P> (ParameterID { "dyn2_q", 4 }, "Dyn 2 Q", logRange (0.3f, 8.0f, 0.01f), 1.4f, qAttr),
         std::make_unique<P> (ParameterID { "dyn2_thresh", 4 }, "Dyn 2 Threshold", NormalisableRange<float> (-60.0f, 0.0f, 0.5f), -36.0f, dbfs),
         std::make_unique<P> (ParameterID { "dyn2_range", 4 }, "Dyn 2 Range", NormalisableRange<float> (0.0f, 18.0f, 0.1f), 0.0f, rangeAttr),
+        std::make_unique<AudioParameterChoice> (ParameterID { "dyn1_mode", 6 }, "Dyn 1 Mode", StringArray { "Above", "Below" }, 0),
+        std::make_unique<AudioParameterChoice> (ParameterID { "dyn2_mode", 6 }, "Dyn 2 Mode", StringArray { "Above", "Below" }, 0),
         std::make_unique<P> (ParameterID { "bredde", 1 }, "Width", NormalisableRange<float> (0.0f, 150.0f, 1.0f), 100.0f, prosent),
         std::make_unique<P> (ParameterID { "mix", 1 }, "Mix", NormalisableRange<float> (0.0f, 100.0f, 0.5f), 25.0f, prosent),
     };
@@ -173,6 +175,7 @@ FiolinProcessor::FiolinProcessor()
         d.q       = parametre.getRawParameterValue (dynId (b, "q"));
         d.terskel = parametre.getRawParameterValue (dynId (b, "thresh"));
         d.range   = parametre.getRawParameterValue (dynId (b, "range"));
+        d.modus   = parametre.getRawParameterValue (dynId (b, "mode"));
         d.detektor.setType (dsp::StateVariableTPTFilterType::bandpass);
         dynGr[(size_t) b] = 0.0f;
         dynNivaa[(size_t) b] = -120.0f;
@@ -436,6 +439,8 @@ void FiolinProcessor::prosesserDyn (float* l, float* r, int n)
 {
     // Detektor: båndpass på mono-summen -> RMS-konvolutt (attack 8 ms,
     // release 150 ms) -> 3:1 med 6 dB myk knekk, begrenset av Range.
+    // Above: demper når nivået er over terskelen. Below: demper når nivået er
+    // under terskelen (nedover-ekspansjon i båndet), like bratt.
     // Dempingen gjøres med et peaking-filter som oppdateres hver 16. sample.
     const double fs = rate.load();
     const float aAtt = std::exp (-1.0f / (0.008f * (float) fs));
@@ -456,6 +461,7 @@ void FiolinProcessor::prosesserDyn (float* l, float* r, int n)
         const float f0 = jmin (d.frekv->load(), (float) fs * 0.45f);
         const float q = d.q->load();
         const float terskel = d.terskel->load();
+        const bool under = d.modus->load() > 0.5f;
         d.detektor.setCutoffFrequency (f0);
         d.detektor.setResonance (q);
 
@@ -471,7 +477,7 @@ void FiolinProcessor::prosesserDyn (float* l, float* r, int n)
             }
             // RMS i dBFS (+3 dB så en sinus med topp 1 gir 0 dBFS).
             const float nivaa = 10.0f * std::log10 (d.konvolutt + 1.0e-12f) + 3.01f;
-            const float over = nivaa - terskel;
+            const float over = under ? terskel - nivaa : nivaa - terskel;
             float kutt = 0.0f;
             if (over > knekk * 0.5f)       kutt = over * (1.0f - 1.0f / ratio);
             else if (over > -knekk * 0.5f) kutt = (1.0f - 1.0f / ratio) * (over + knekk * 0.5f) * (over + knekk * 0.5f) / (2.0f * knekk);

@@ -301,10 +301,11 @@ int main (int argc, char** argv)
 
     // 6d. Dynamisk EQ: demper bare når båndet er sterkt, og bare i båndet.
     {
-        auto kjorSinus = [] (float hz, float amp, float range, float* gr = nullptr)
+        auto kjorSinus = [] (float hz, float amp, float range, float* gr = nullptr, bool under = false)
         {
             FiolinProcessor pd;
             sett (pd, "mix", 100.0f); sett (pd, "lengde_s", 1.0f);
+            if (under) pd.parametre.getParameter ("dyn1_mode")->setValueNotifyingHost (1.0f);
             sett (pd, "dyn1_freq", 950.0f); sett (pd, "dyn1_thresh", -40.0f); sett (pd, "dyn1_range", range);
             pd.prepareToPlay (48000.0, 512);
             MidiBuffer midi;
@@ -337,6 +338,16 @@ int main (int argc, char** argv)
         sjekk (std::abs (hoyUt - hoyInn) < 1.0, "dyn EQ: 6 kHz utenfor båndet nesten uendret", hoyUt - hoyInn);
         sjekk (std::abs (FiolinProcessor::toppRespons (950, 950, 1.0, -6.0) + 6.0f) < 0.1f, "dyn EQ: responskurve -6 dB i senter");
         sjekk (p.parametre.getParameter ("dyn2_range")->getCurrentValueAsText() == "Off", "dyn EQ: bånd 2 av som standard");
+        sjekk (p.parametre.getParameter ("dyn1_mode")->getCurrentValueAsText() == "Above", "dyn EQ: Above som standard");
+
+        // Below: demper svakt signal (under terskel), lar sterkt være.
+        float grB = 0;
+        const double bSvakUt = kjorSinus (950, 0.001f, 0.0f, nullptr, true), bSvakInn = kjorSinus (950, 0.001f, 12.0f, &grB, true);
+        sjekk (bSvakUt - bSvakInn > 5.0, "dyn EQ Below: svakt signal dempes (dB)", bSvakUt - bSvakInn);
+        sjekk (bSvakUt - bSvakInn < 12.5, "dyn EQ Below: maks Range", bSvakUt - bSvakInn);
+        sjekk (grB < -5.0f, "dyn EQ Below: rapporterer demping", grB);
+        const double bSterkUt = kjorSinus (950, 0.5f, 0.0f, nullptr, true), bSterkInn = kjorSinus (950, 0.5f, 12.0f, nullptr, true);
+        sjekk (std::abs (bSterkUt - bSterkInn) < 0.3, "dyn EQ Below: sterkt signal over terskel uendret", bSterkUt - bSterkInn);
     }
 
     // 6e. Modulasjon: dybde 0 gir nøyaktig den syntetiske IR-en; dybde 100 %
@@ -585,6 +596,19 @@ int main (int argc, char** argv)
                 for (auto* b2 : barn->getChildren())
                     if (auto* tb = dynamic_cast<TextButton*> (b2))
                         if (tb->getButtonText() == "DYN EQ" && tb->onClick) tb->onClick();
+        // Above/Below-bryteren for bånd 2
+        {
+            TextButton* m2 = nullptr;
+            if (auto* fe = dynamic_cast<FiolinEditor*> (ed.get()))
+                for (auto* barn : fe->getChildren())
+                    for (auto* b2 : barn->getChildren())
+                        if (auto* tb = dynamic_cast<TextButton*> (b2))
+                            if (tb->getButtonText() == "2 ABOVE") m2 = tb;
+            sjekk (m2 != nullptr && m2->isVisible(), "DYN: Above/Below-knapp synlig i DYN EQ");
+            if (m2 != nullptr && m2->onClick) m2->onClick();
+            sjekk (p3.parametre.getParameter ("dyn2_mode")->getCurrentValueAsText() == "Below", "DYN: knapp bytter til Below");
+            sjekk (m2 != nullptr && m2->getButtonText() == "2 BELOW", "DYN: knappetekst oppdateres");
+        }
         std::function<void (Component*)> dynFane = [&] (Component* c)
         {
             if (auto* b = dynamic_cast<TextButton*> (c))

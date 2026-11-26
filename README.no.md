@@ -38,7 +38,7 @@ Nivået følger lengden slik det gjør i et ekte rom: lengre klang gir mer klang
 | **Lo Freq / Lo Gain** | Low shelf på klangen, 50–1000 Hz, ±12 dB. |
 | **High Cut** (2 kHz–Off) | Low-pass 12 dB/okt på klangen. Lavere verdi låter mykere og lenger unna. |
 | **Hi Freq / Hi Gain** | High shelf på klangen, 1–16 kHz, ±12 dB. Litt kutt (−2 til −4 dB) temmer buestøy i halen. |
-| **Dynamic EQ: Freq / Q / Thresh / Range** (to bånd) | Peaking-filtre på klangen som bare demper når nivået i båndet går over Thresh (RMS i dBFS). Range er maks demping (0 = av). 3:1, attack 8 ms, release 150 ms. Bånd 1: 950 Hz, −3 dB. Bånd 2 er av som standard. |
+| **Dynamic EQ: Freq / Q / Thresh / Range / ABOVE–BELOW** (to bånd) | Peaking-filtre på klangen som bare demper når nivået i båndet går over Thresh (ABOVE, standard) eller under Thresh (BELOW), målt som RMS i dBFS. Range er maks demping (0 = av). 3:1, attack 8 ms, release 150 ms. Bånd 1: 950 Hz, −3 dB. Bånd 2 er av som standard. |
 | **Mix** (0–100 %) | Tørt/vått. Opp til 50 % står det tørre signalet fullt, over det tones det ned. Klangen stiger etter en kurve, så lave innstillinger blir tørre: 25 % = −10 dB, 50 % = full klang. På en aux/send: 100 %. |
 | **Width** (0–150 %) | Stereobredde på klangen. 0 % = mono, 100 % = som rommet, 150 % = ekstra bred. |
 
@@ -81,7 +81,7 @@ Uten Xcode (bare Command Line Tools) virker `cmake -B build -G "Unix Makefiles" 
 - **Modulasjon:** at 0 % gir nøyaktig den syntetiske IR-en, at 100 % endrer halen over tid uten å endre de tidlige refleksjonene, nivået eller RT, og at en ren tone forblir ren (ingen tonehøydemodulasjon).
 - **CPU:** at 10 s lyd med 4 s klang behandles godt innenfor sanntid.
 - **Mellomtone:** at 700–1200 Hz i halen ligger 1,5–4,5 dB under naboområdene.
-- **Dynamisk EQ:** at en sterk tone i båndet dempes med Range, at svakt signal og toner utenfor båndet ikke endres, og at dempingen meldes til visningen.
+- **Dynamisk EQ:** at en sterk tone i båndet dempes med Range, at svakt signal og toner utenfor båndet ikke endres, at BELOW demper svakt signal og lar sterkt være, og at dempingen meldes til visningen.
 - **Dra-håndtak:** at LS, HC, terskel og Range endres riktig når håndtakene flyttes.
 - **RTA:** riktig nivå i dBFS, ingen lekkasje og full kø uten krasj.
 - **Ellers:** 44,1 og 48 kHz, mix 0 = uendret tørt signal, lagring og gjenoppretting av tilstand, og at IR-en byttes i bakgrunnen.

@@ -127,6 +127,8 @@ private:
           lavkutt, loFreq, loGain, hoykutt, hiFreq, hiGain,
           bredde, mix, modDybde, modRate;
     std::array<Knott, FiolinProcessor::antallDyn> dynFreq, dynQ, dynThr, dynRange;
+    std::array<juce::TextButton, FiolinProcessor::antallDyn> dynModus;   // Above / Below
+    void byttDynModus (int band);
     int visteModus = -1;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FiolinEditor)

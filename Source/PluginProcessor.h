@@ -137,6 +137,7 @@ private:
         std::atomic<float>* q = nullptr;
         std::atomic<float>* terskel = nullptr;
         std::atomic<float>* range = nullptr;
+        std::atomic<float>* modus = nullptr;   // 0 = Above, 1 = Below
         juce::dsp::StateVariableTPTFilter<float> detektor;
         float konvolutt = 0.0f;      // effekt (kvadrat) i båndet
         float gr = 0.0f;             // demping nå (dB)
