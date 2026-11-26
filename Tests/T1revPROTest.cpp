@@ -463,7 +463,10 @@ int main (int argc, char** argv)
             pc.processBlock (bb, m3);
         }
         const double ms = Time::getMillisecondCounterHiRes() - t0;
-        sjekk (ms < 10000.0 * 0.15, "CPU: % av sanntid (4 s klang)", ms / 100.0);
+        // CI-maskiner (GitHub) er delte og trege; der fanges bare grove regresjoner.
+        const bool ci = SystemStats::getEnvironmentVariable ("CI", {}).isNotEmpty();
+        sjekk (ms < 10000.0 * (ci ? 0.75 : 0.15), ci ? "CPU: % av sanntid (4 s klang, CI-grense 75 %)"
+                                                    : "CPU: % av sanntid (4 s klang)", ms / 100.0);
     }
 
     // 7. Lagring/gjenoppretting av tilstand.

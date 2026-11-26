@@ -2,6 +2,13 @@
 
 Nyeste øverst. Hver oppføring: hva som er gjort, beslutninger, prøvd og forkastet, og erfaringer.
 
+## CI-fiks etter push av 1.8–1.10
+- **Problem:** testtrinnet feilet på GitHub (macOS-runner). Loggen krever innlogging, så årsaken
+  ble funnet lokalt ved å kjøre testene strupet (`taskpolicy -c background`): bare CPU-testen
+  feilet, 44 % av sanntid mot grensen 15 %. Tre halekonvolusjoner (1.9) koster ca. 3× så mye.
+- **Beslutning:** CPU-grensen er 75 % når `CI` er satt (delte, trege runnere), 15 % lokalt (målt 5,4 %).
+- **Erfaring:** kjør testene med `taskpolicy -c background` før push for å etterligne CI.
+
 ## 1.10.0 – Above/Below på dynamisk EQ, versjon i GUI
 - **Gjort:** parameteren `dynN_mode` (Choice «Above»/«Below», versjon 6). BELOW demper når RMS i
   båndet er *under* Thresh (nedover-ekspansjon), med samme knekk, ratio og Range som ABOVE.
